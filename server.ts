@@ -1,5 +1,8 @@
 import express from "express";
 import path from "path";
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'dummy' });
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
 
@@ -327,8 +330,30 @@ async function startServer() {
       }
 
       if (config.enableFileCheck && fileModified && fileModified !== 'none') {
-        await logEntry("BLOCKED", `Modified file detected: ${fileModified}`);
-        return res.json({ success: false, action: config.actionOnFailure, message: `Modified file: ${fileModified}` });
+        let isSafe = false;
+        try {
+            if (process.env.GEMINI_API_KEY) {
+                const prompt = `Analiza este archivo de juego modificado en un entorno de Mu Online: '${fileModified}'. ¿Es un hack/cheat conocido (como Cheat Engine, Haste, SpeedHack, AutoClicker, WPE Pro) o es un archivo inofensivo (como un log de error, un archivo de texto, o configuracion visual)? Responde SOLO con 'HACK' o 'SEGURO'.`;
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: prompt,
+                });
+                const aiResult = response.text.trim().toUpperCase();
+                if (aiResult.includes('SEGURO')) {
+                    isSafe = true;
+                    await logEntry("ALLOWED", `AI Analysis: ${fileModified} was deemed SAFE by Onyx Guard AI.`);
+                } else {
+                    await logEntry("BLOCKED", `AI Analysis: ${fileModified} detected as HACK/CHEAT by Onyx Guard AI.`);
+                }
+            }
+        } catch (e) {
+            console.error("AI Analysis error:", e);
+        }
+
+        if (!isSafe) {
+            await logEntry("BLOCKED", `Modified file detected: ${fileModified}`);
+            return res.json({ success: false, action: config.actionOnFailure, message: `Onyx Guard AI detectó modificación maliciosa: ${fileModified}` });
+        }
       }
 
       if (config.enableHwidCheck && username) {
@@ -348,7 +373,7 @@ async function startServer() {
           return res.json({
             success: true,
             action: "CONTINUE",
-            message: "Authorization successful",
+            message: "Usted ha sido autenticado por Onyx Guard, disfrute del juego",
             sessionToken: Math.random().toString(36).substring(2, 15)
           });
         }
@@ -373,7 +398,7 @@ async function startServer() {
       res.json({
         success: true,
         action: "CONTINUE",
-        message: "Authorization successful",
+        message: "Bienvenido",
         sessionToken: Math.random().toString(36).substring(2, 15)
       });
       
