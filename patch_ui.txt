@@ -1,0 +1,18 @@
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableDllScanner}
+                        onChange={(e) => setEnableDllScanner(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Escáner de Inyección de DLL' : 'DLL Injection Scanner'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableMemoryScanner}
+                        onChange={(e) => setEnableMemoryScanner(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Escáner de Memoria (Firmas)' : 'Memory Signature Scanner'}</span>
+                    </label>

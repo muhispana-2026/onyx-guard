@@ -106,7 +106,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'architecture' | 'generator' | 'dashboard' | 'sandbox' | 'guide'>('architecture');
 
   // Generator Options (Dynamic C++ Code generation)
-  const [serverUrl, setServerUrl] = useState('https://auth.mymuonline.com/api/validate');
+  const [serverUrl, setServerUrl] = useState('https://onyx-guard.onrender.com/api/auth');
   const [securityToken, setSecurityToken] = useState('MU_SECURE_TOKEN_2026_X');
   const [clientVersion, setClientVersion] = useState('1.04d');
   const [enableHwidCheck, setEnableHwidCheck] = useState(true);
@@ -114,12 +114,15 @@ export default function App() {
   const [enableMultiClientBlock, setEnableMultiClientBlock] = useState(true);
   const [enableAntiMacro, setEnableAntiMacro] = useState(true);
   const [enableAntiDebug, setEnableAntiDebug] = useState(true);
+  const [enableDllScanner, setEnableDllScanner] = useState(true);
+  const [enableMemoryScanner, setEnableMemoryScanner] = useState(false);
   const [enableProcessBinding, setEnableProcessBinding] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
   const [blacklistedPrograms, setBlacklistedPrograms] = useState<string[]>(['Cheat Engine', 'AutoClicker', 'SpeedHack', 'WPE PRO', 'OllyDbg', 'Wireshark']);
   const [licenseExpiration, setLicenseExpiration] = useState('');
   const [actionOnFailure, setActionOnFailure] = useState<'EXIT' | 'MSG_BOX' | 'CRASH'>('MSG_BOX');
   const [selectedLanguage, setSelectedLanguage] = useState<'cpp' | 'csharp'>('cpp');
+  const [usePch, setUsePch] = useState(true);
 
   // Database States
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -160,6 +163,8 @@ export default function App() {
         if (data.enableMultiClientBlock !== undefined) setEnableMultiClientBlock(data.enableMultiClientBlock);
         if (data.enableAntiMacro !== undefined) setEnableAntiMacro(data.enableAntiMacro);
         if (data.enableAntiDebug !== undefined) setEnableAntiDebug(data.enableAntiDebug);
+        if (data.enableDllScanner !== undefined) setEnableDllScanner(data.enableDllScanner);
+        if (data.enableMemoryScanner !== undefined) setEnableMemoryScanner(data.enableMemoryScanner);
         if (data.enableProcessBinding !== undefined) setEnableProcessBinding(data.enableProcessBinding);
         if (data.enablePayloadEncryption !== undefined) setEnablePayloadEncryption(data.enablePayloadEncryption);
         if (data.blacklistedPrograms !== undefined) setBlacklistedPrograms(data.blacklistedPrograms);
@@ -193,12 +198,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -465,16 +470,26 @@ export default function App() {
 
   // C++ Dynamic DLL code based on user configurations
   const cppCode = useMemo(() => {
+    // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
+    const filesArrayContent = clientFiles.length > 0 
+      ? clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',\n')
+      : `    { "", "" } // Dummy element to prevent empty array compilation error`;
+      
+    const blacklistedArrayContent = blacklistedPrograms.length > 0
+      ? blacklistedPrograms.map(p => `    "${p}"`).join(',\n')
+      : `    "DummyWindowName" // Dummy element to prevent empty array compilation error`;
+
     return `// ============================================================================
 //  ONYX GUARD ANTI-HACK & CLIENT INTEGRITY PLUGIN
 //  Target Game Client: Season 6 (main.exe v${clientVersion})
 //  File: Custom.cpp (DLL Project Source Code)
 //  Compiled using: Visual Studio 2019/2022 (MSVC Toolset)
 // ============================================================================
-
-#include <windows.h>
+${usePch ? '\n#include "pch.h"\n' : ''}
+#include <windows.h>\n#include <objbase.h>
 #include <wininet.h>
 #include <shellapi.h>
+#include <psapi.h>\n#pragma comment(lib, "psapi.lib")
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -484,6 +499,7 @@ export default function App() {
 #pragma comment(lib, "wininet.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "ole32.lib")
 
 // --- PLUGIN CONFIGURATION ---
 const std::string AUTH_SERVER_URL = "${serverUrl}";
@@ -498,16 +514,17 @@ struct ClientFile {
 
 // Registered hashes from server settings
 ClientFile CRITICAL_FILES[] = {
-${clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',\n')}
+${filesArrayContent}
 };
 
 ${enableAntiMacro ? `// Blacklisted Window Names (Cheat Engine, AutoClicker, etc)
 const char* BLACKLISTED_WINDOWS[] = {
-${blacklistedPrograms.map(p => `    "${p}"`).join(',\n')}
+${blacklistedArrayContent}
 };
 
 bool ScanForBlacklistedWindows() {
     for (int i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
+        if (std::string(BLACKLISTED_WINDOWS[i]) == "DummyWindowName") continue;
         if (FindWindowA(NULL, BLACKLISTED_WINDOWS[i]) != NULL) {
             return true;
         }
@@ -517,21 +534,40 @@ bool ScanForBlacklistedWindows() {
 
 // Simple Hardware ID generator using MAC Address & System Information
 std::string GetHardwareID() {
+    char compName[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD compNameLen = sizeof(compName);
+    GetComputerNameA(compName, &compNameLen);
+    
     std::string hwid = "HWID-";
-    UUID uuid;
-    if (CoCreateGuid(&uuid) == S_OK) {
-        char guidStr[40];
-        sprintf_s(guidStr, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-            uuid.Data1, uuid.Data2, uuid.Data3,
-            uuid.Data4[0], uuid.Data4[1], uuid.Data4[2], uuid.Data4[3],
-            uuid.Data4[4], uuid.Data4[5], uuid.Data4[6], uuid.Data4[7]);
-        hwid += guidStr;
-    } else {
-        hwid += "FALLBACK-8F9D-4B1A-9E2F";
-    }
-    // Limit to keep string tidy
-    return hwid.substr(0, 24);
+    hwid += compName;
+    return hwid;
 }
+
+${enableDllScanner ? `// Injected DLL Scanner
+bool ScanForInjectedDLLs() {
+    HMODULE hMods[1024];
+    DWORD cbNeeded;
+    if (EnumProcessModules(GetCurrentProcess(), hMods, sizeof(hMods), &cbNeeded)) {
+        for (unsigned int i = 0; i < (cbNeeded / sizeof(HMODULE)); i++) {
+            char szModName[MAX_PATH];
+            if (GetModuleFileNameExA(GetCurrentProcess(), hMods[i], szModName, sizeof(szModName) / sizeof(char))) {
+                std::string modName = szModName;
+                for(size_t j=0; j<modName.length(); ++j) modName[j] = tolower(modName[j]);
+                if (modName.find("hack") != std::string::npos || modName.find("cheat") != std::string::npos || modName.find("speed") != std::string::npos) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}` : ''}
+
+${enableMemoryScanner ? `// Memory Signature Scanner
+bool ScanMemorySignatures() {
+    // Basic conceptual signature scanner. Real deployments use VirtualQueryEx
+    // to map pages and ReadProcessMemory to match AoB (Array of Bytes) patterns.
+    return false;
+}` : ''}
 
 ${enableAntiDebug ? `// Advanced Anti-Debugging
 bool CheckForDebugger() {
@@ -737,7 +773,10 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
 
     // Connect to the web API to validate player login & computer HWID
     // In actual production, username can be retrieved from launcher launch parameters
-    std::string accountName = "PlayerInGame"; 
+    char compNameUser[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD compNameUserLen = sizeof(compNameUser);
+    GetComputerNameA(compNameUser, &compNameUserLen);
+    std::string accountName = compNameUser; 
     
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
@@ -750,6 +789,12 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
         if(ScanForBlacklistedWindows()) {
             HandleFailure("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
         }
+${enableDllScanner ? `        if(ScanForInjectedDLLs()) {
+            HandleFailure("DLL INJECTION DETECTED:\\nA malicious DLL module was found in memory.");
+        }` : ''}
+${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
+            HandleFailure("MEMORY TAMPERING DETECTED:\\nKnown cheat signatures found in memory.");
+        }` : ''}
         Sleep(3000); // Check every 3 seconds
     }` : ''}
     
@@ -781,7 +826,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     return TRUE;
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableMultiClientBlock, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableMultiClientBlock, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch]);
 
 
   const csharpCode = useMemo(() => {
@@ -914,12 +959,8 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
 
         private static string FetchHWID()
         {
-            // Gather Motherboard and CPU IDs
             try {
-                string drive = Path.GetPathRoot(Environment.SystemDirectory);
-                DriveInfo dInfo = new DriveInfo(drive);
-                string volumeSerial = dInfo.VolumeLabel + "_UUID_C10048F";
-                return "HWID-" + GetMd5String(volumeSerial).Substring(0, 20).ToUpper();
+                return "HWID-" + Environment.MachineName;
             }
             catch {
                 return "HWID-GENERIC-WIN10-CLIENT";
@@ -1006,7 +1047,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
     }
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
 
 
   // Filtered Logs
@@ -1185,7 +1226,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
               <div>
                 <div className="text-[10px] text-slate-500 uppercase font-mono font-bold">{t.header.apiServer}</div>
-                <div className="text-xs text-slate-300 font-mono">ONLINE (Port 3000)</div>
+                <div className="text-xs text-slate-300 font-mono">ONLINE</div>
               </div>
             </div>
 
@@ -1671,6 +1712,23 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     <h4 className="text-xs font-semibold text-amber-500 uppercase tracking-wider mb-3">
                       {language === 'es' ? 'Seguridad Avanzada (Nivel Pro)' : 'Advanced Security (Pro Level)'}
                     </h4>
+
+                  {selectedLanguage === 'cpp' && (
+                    <div className="mb-4 pb-4 border-b border-slate-800">
+                      <h4 className="text-amber-500 font-bold uppercase tracking-wider text-[10px] mb-2 opacity-80">
+                        {language === 'es' ? 'Compilador (Visual Studio)' : 'Compiler (Visual Studio)'}
+                      </h4>
+                      <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                        <input 
+                          type="checkbox" 
+                          checked={usePch}
+                          onChange={(e) => setUsePch(e.target.checked)}
+                          className="accent-amber-500"
+                        />
+                        <span>{language === 'es' ? 'Incluir #include "pch.h" (Evita error C1010)' : 'Include #include "pch.h" (Prevents C1010 Error)'}</span>
+                      </label>
+                    </div>
+                  )}
                     
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
@@ -1700,6 +1758,24 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                         className="accent-amber-500"
                       />
                       <span>{language === 'es' ? 'Cifrado de Carga Útil (XOR)' : 'Payload Encryption (XOR)'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableDllScanner}
+                        onChange={(e) => setEnableDllScanner(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Escáner de Inyección de DLL' : 'DLL Injection Scanner'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableMemoryScanner}
+                        onChange={(e) => setEnableMemoryScanner(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Escáner de Memoria (Firmas)' : 'Memory Signature Scanner'}</span>
                     </label>
                   </div>
                 </div>

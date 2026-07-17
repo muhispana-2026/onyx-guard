@@ -22,7 +22,7 @@ async function seedData() {
     await setDoc(doc(db, 'projects', "project_beta"), { id: "project_beta", name: "Mu Server Beta" });
 
     await setDoc(doc(db, 'config', defaultProjectId), {
-      serverUrl: "http://localhost:3000/api/auth",
+      serverUrl: "https://onyx-guard.onrender.com/api/auth",
       clientVersion: "1.04.05",
       securityToken: "MU-SEC-X99-2024",
       actionOnFailure: "EXIT",
@@ -68,7 +68,7 @@ async function startServer() {
       await setDoc(doc(db, 'projects', id), { id, name });
       
       await setDoc(doc(db, 'config', id), {
-        serverUrl: "http://localhost:3000/api/auth",
+        serverUrl: "https://onyx-guard.onrender.com/api/auth",
         clientVersion: "1.00.00",
         securityToken: "TOKEN_" + id.toUpperCase(),
         actionOnFailure: "MSG_BOX",
@@ -247,10 +247,11 @@ async function startServer() {
   // ==========================================
   app.post("/api/auth", async (req, res) => {
     try {
-      const { username, hwid, ip, clientVersion, fileModified, token } = req.body;
+      const { username, hwid, ip, clientVersion, fileModified, token, secretToken } = req.body;
+      const actualToken = token || secretToken;
       const timestamp = new Date().toISOString();
       
-      const tokenQuery = await getDocs(query(collection(db, 'config'), where('securityToken', '==', token), limit(1)));
+      const tokenQuery = await getDocs(query(collection(db, 'config'), where('securityToken', '==', actualToken), limit(1)));
       
       if (tokenQuery.empty) {
         return res.json({ success: false, action: "EXIT", message: "Invalid token" });
@@ -290,8 +291,23 @@ async function startServer() {
         const accQuery = await getDocs(query(collection(db, 'accounts'), where('username', '==', username), where('projectId', '==', projectId), limit(1)));
         
         if (accQuery.empty) {
-          await logEntry("BLOCKED", `Account ${username} not registered in DB`);
-          return res.json({ success: false, action: config.actionOnFailure, message: "Account not registered" });
+          // Auto-register new accounts to avoid immediate blocking
+          const newAccountId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+          await setDoc(doc(db, 'accounts', newAccountId), {
+            id: newAccountId,
+            projectId,
+            username,
+            hwid: hwid || 'Unknown',
+            status: 'ACTIVE',
+            lastLogin: timestamp
+          });
+          await logEntry("ALLOWED", `Auto-registered account ${username} with HWID ${hwid}`);
+          return res.json({
+            success: true,
+            action: "CONTINUE",
+            message: "Authorization successful",
+            sessionToken: Math.random().toString(36).substring(2, 15)
+          });
         }
         
         const accDoc = accQuery.docs[0];
