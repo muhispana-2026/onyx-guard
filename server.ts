@@ -41,7 +41,17 @@ async function startServer() {
   const app = express();
   
   app.use(cors());
-  app.use(express.json());
+    app.use((req, res, next) => {
+    if (req.path === '/api/auth') {
+        if (req.headers['x-payload-encrypted'] === 'true') {
+            express.raw({ type: '*/*' })(req, res, next);
+        } else {
+            express.json()(req, res, next);
+        }
+    } else {
+        express.json()(req, res, next);
+    }
+  });
 
   const getProjectId = (req: express.Request) => req.headers['x-project-id'] as string || 'project_alpha';
 
@@ -245,9 +255,43 @@ async function startServer() {
   // ==========================================
   // DLL AUTHENTICATION ENDPOINT (Game Client)
   // ==========================================
-  app.post("/api/auth", async (req, res) => {
+    app.post("/api/auth", async (req, res) => {
     try {
-      const { username, hwid, ip, clientVersion, fileModified, token, secretToken } = req.body;
+      let parsedBody = req.body;
+      if (Buffer.isBuffer(req.body) || req.headers['x-payload-encrypted'] === 'true') {
+          const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body.toString());
+          try {
+              const str = buffer.toString('utf8');
+              const json = JSON.parse(str);
+              if (json && typeof json === 'object') {
+                  parsedBody = json;
+              }
+          } catch (e) { }
+          
+          if (!parsedBody || Object.keys(parsedBody).length === 0 || Buffer.isBuffer(parsedBody)) {
+              const configs = await getDocs(collection(db, 'config'));
+              let decryptedStr = "";
+              for (const doc of configs.docs) {
+                  const token = doc.data().securityToken;
+                  if (!token) continue;
+                  const decrypted = Buffer.alloc(buffer.length);
+                  for (let i = 0; i < buffer.length; i++) {
+                      decrypted[i] = buffer[i] ^ token.charCodeAt(i % token.length);
+                  }
+                  try {
+                      const str = decrypted.toString('utf8');
+                      JSON.parse(str);
+                      decryptedStr = str;
+                      break;
+                  } catch (e) {}
+              }
+              if (!decryptedStr) {
+                  return res.json({ success: false, action: "EXIT", message: "Invalid encrypted payload" });
+              }
+              parsedBody = JSON.parse(decryptedStr);
+          }
+      }
+      const { username, hwid, ip, clientVersion, fileModified, token, secretToken } = parsedBody;
       const actualToken = token || secretToken;
       const timestamp = new Date().toISOString();
       
@@ -291,7 +335,6 @@ async function startServer() {
         const accQuery = await getDocs(query(collection(db, 'accounts'), where('username', '==', username), where('projectId', '==', projectId), limit(1)));
         
         if (accQuery.empty) {
-          // Auto-register new accounts to avoid immediate blocking
           const newAccountId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
           await setDoc(doc(db, 'accounts', newAccountId), {
             id: newAccountId,
@@ -318,35 +361,27 @@ async function startServer() {
           return res.json({ success: false, action: config.actionOnFailure, message: "Banned" });
         }
         
-        if (account.hwid && account.hwid !== hwid && account.status !== "UNLOCKED") {
-          await logEntry("BLOCKED", `HWID Mismatch. Registered: ${account.hwid}, Given: ${hwid}`);
+        if (account.hwid && account.hwid !== hwid) {
+          await logEntry("BLOCKED", `HWID mismatch (Expected: ${account.hwid}, Got: ${hwid})`);
           return res.json({ success: false, action: config.actionOnFailure, message: "HWID mismatch" });
         }
         
-        if ((!account.hwid || account.status === "UNLOCKED") && hwid) {
-          await updateDoc(accDoc.ref, { hwid, status: 'ACTIVE', lastLogin: timestamp });
-        } else {
-          await updateDoc(accDoc.ref, { lastLogin: timestamp });
-        }
+        await updateDoc(doc(db, 'accounts', account.id), { lastLogin: timestamp });
       }
 
-      await logEntry("ALLOWED", "Handshake accepted");
+      await logEntry("ALLOWED", "Authorization successful");
       res.json({
         success: true,
         action: "CONTINUE",
         message: "Authorization successful",
-        sessionToken: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+        sessionToken: Math.random().toString(36).substring(2, 15)
       });
       
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
       res.status(500).json({ success: false, action: "EXIT", message: "Internal server error" });
     }
   });
 
-  // ==========================================
-  // VITE DEV / PRODUCTION MIDDLEWARE
-  // ==========================================
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
