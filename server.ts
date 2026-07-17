@@ -255,6 +255,18 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/logs", async (req, res) => {
+    try {
+      const projectId = getProjectId(req);
+      const snapshot = await getDocs(query(collection(db, 'logs'), where('projectId', '==', projectId)));
+      const batchDelete = snapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(batchDelete);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   // ==========================================
   // DLL AUTHENTICATION ENDPOINT (Game Client)
   // ==========================================

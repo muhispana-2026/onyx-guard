@@ -383,6 +383,29 @@ export default function App() {
     setNewProjectName('');
   };
 
+
+  const handleClearLogs = async () => {
+    if (!window.confirm(language === 'es' ? '¿Seguro que deseas eliminar todos los registros?' : 'Are you sure you want to clear all logs?')) return;
+    try {
+      await fetch('/api/logs', { method: 'DELETE', headers: { 'x-project-id': activeProjectId } });
+      setLogs([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDownloadLogs = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Timestamp,Type,Username,Status,Reason,HWID,IP,Version\n"
+      + logs.map(l => `${l.timestamp},${l.type},${l.username},${l.status},"${l.reason}",${l.hwid},${l.ip},${l.clientVersion}`).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "onyx_guard_logs.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const handleDeleteProject = async () => {
     if (!activeProjectId) return;
     
@@ -491,11 +514,11 @@ export default function App() {
   const cppCode = useMemo(() => {
     // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
     const filesArrayContent = clientFiles.length > 0 
-      ? clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',\n')
+      ? clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',')
       : `    { "", "" } // Dummy element to prevent empty array compilation error`;
       
     const blacklistedArrayContent = blacklistedPrograms.length > 0
-      ? blacklistedPrograms.map(p => `    "${p}"`).join(',\n')
+      ? blacklistedPrograms.map(p => `    "${p}"`).join(',')
       : `    "DummyWindowName" // Dummy element to prevent empty array compilation error`;
 
     return `// ============================================================================
@@ -504,11 +527,11 @@ export default function App() {
 //  File: Custom.cpp (DLL Project Source Code)
 //  Compiled using: Visual Studio 2019/2022 (MSVC Toolset)
 // ============================================================================
-${usePch ? '\n#include "pch.h"\n' : ''}
-#include <windows.h>\n#include <objbase.h>
+${usePch ? '#include "pch.h"' : ''}
+#include <windows.h>#include <objbase.h>
 #include <wininet.h>
 #include <shellapi.h>
-#include <psapi.h>\n#pragma comment(lib, "psapi.lib")
+#include <psapi.h>#pragma comment(lib, "psapi.lib")
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -688,12 +711,12 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
          << "}";
     
     std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\\r\\n";
+    std::string headers = "Content-Type: application/json\\r\";
 
 ${enablePayloadEncryption ? `    // Encrypting Payload before sending
     payload = EncryptPayload(payload);
     // Add custom header to indicate encrypted payload
-    headers += "X-Payload-Encrypted: true\\r\\n";
+    headers += "X-Payload-Encrypted: true\\r\";
 ` : ''}
 
     BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
@@ -712,7 +735,7 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
         if (responseString.find("\\"success\\":true") != std::string::npos || responseString.find("\\"success\\": true") != std::string::npos) {
             isAuthorized = true;
         } else {
-            std::string err = "Server rejected auth.\\nResponse: " + responseString;
+            std::string err = "Server rejected auth.\Response: " + responseString;
             MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
         }
     } else {
@@ -788,13 +811,13 @@ DWORD WINAPI IntegrityCheckThread(LPVOID lpParam) {
     
 ${enableProcessBinding ? `    // 1. Verify we are inside main.exe
     if (!VerifyHostProcess()) {
-        HandleFailure("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
+        HandleFailure("UNAUTHORIZED PROCESS:\Onyx Guard must only be loaded via main.exe.");
         return 1;
     }` : ''}
 
 ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     if (CheckForDebugger()) {
-        HandleFailure("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
+        HandleFailure("DEBUGGER DETECTED:\Please close all reverse-engineering tools.");
         return 1;
     }` : ''}
 
@@ -820,19 +843,19 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
     if (!status) {
-        HandleFailure("CRITICAL SECURITY ERROR:\\nYour client files or Hardware ID are unauthorized.");
+        HandleFailure("CRITICAL SECURITY ERROR:\Your client files or Hardware ID are unauthorized.");
     }
     
     ${enableAntiMacro ? `// Start continuous macro checking loop
     while(true) {
         if(ScanForBlacklistedWindows()) {
-            HandleFailure("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
+            HandleFailure("ILLEGAL SOFTWARE DETECTED:\A blacklisted macro, auto-clicker, or memory editor was found.");
         }
 ${enableDllScanner ? `        if(ScanForInjectedDLLs()) {
-            HandleFailure("DLL INJECTION DETECTED:\\nA malicious DLL module was found in memory.");
+            HandleFailure("DLL INJECTION DETECTED:\A malicious DLL module was found in memory.");
         }` : ''}
 ${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
-            HandleFailure("MEMORY TAMPERING DETECTED:\\nKnown cheat signatures found in memory.");
+            HandleFailure("MEMORY TAMPERING DETECTED:\Known cheat signatures found in memory.");
         }` : ''}
         Sleep(3000); // Check every 3 seconds
     }` : ''}
@@ -921,7 +944,7 @@ ${enableProcessBinding ? `                // Enforce main.exe binding
                 Process currentProcess = Process.GetCurrentProcess();
                 if (!currentProcess.ProcessName.Equals("main", StringComparison.OrdinalIgnoreCase))
                 {
-                    EnforceBlock("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
+                    EnforceBlock("UNAUTHORIZED PROCESS:\Onyx Guard must only be loaded via main.exe.");
                     return false;
                 }` : ''}
 
@@ -930,7 +953,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                 CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isRemote);
                 if (IsDebuggerPresent() || isRemote)
                 {
-                    EnforceBlock("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
+                    EnforceBlock("DEBUGGER DETECTED:\Please close all reverse-engineering tools.");
                     return false;
                 }` : ''}
 
@@ -939,11 +962,11 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
 
                 ${enableFileCheck ? `// Check critical client file hashes
                 string[] filesToVerify = {
-                    ${clientFiles.map(f => `"${f.path}"`).join(',\n                    ')}
+                    ${clientFiles.map(f => `"${f.path}"`).join(',                    ')}
                 };
 
                 string[] expectedHashes = {
-                    ${clientFiles.map(f => `"${f.expectedHash}"`).join(',\n                    ')}
+                    ${clientFiles.map(f => `"${f.expectedHash}"`).join(',                    ')}
                 };
 
                 for (int i = 0; i < filesToVerify.Length; i++)
@@ -978,7 +1001,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                                 {
                                     if (p.MainWindowTitle.Contains(bw) || p.ProcessName.Contains(bw))
                                     {
-                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
+                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED:\A blacklisted macro, auto-clicker, or memory editor was found.");
                                     }
                                 }
                             }
@@ -2143,7 +2166,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                       <FileCheck className="w-5 h-5 text-amber-400" /> {t.dashboard.fileIntegrityRules || (language === 'es' ? 'Reglas de Lista de Integridad de Archivos' : 'File Integrity Checklist Rules')}
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      {t.dashboard.fileIntegrityRulesDesc || (language === 'es' ? 'La API evalúa las sumas de comprobación MD5 entrantes con esta lista estática.' : 'The API evaluates incoming MD5 hash matches against this static checklist.')}
+                      {t.dashboard.fileIntegrityRulesDesc || (language === 'es' ? 'La DLL dentro del cliente escanea automáticamente los archivos, calcula el MD5 y su peso, enviándolos al servidor para comparar con esta lista de integridad.' : 'The custom DLL inside the game client automatically scans the files, calculates the exact MD5 hash and size, and securely transmits them to the server for verification.')}
                     </p>
                   </div>
                 </div>
@@ -2293,7 +2316,28 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                         accept=".txt,.list,.db,.json"
                         onChange={(e) => {
                           if (e.target.files && e.target.files[0]) {
-                            alert(language === 'es' ? 'Archivo cargado con éxito para análisis.' : 'File uploaded successfully for parsing.');
+                            const file = e.target.files[0];
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const content = event.target?.result;
+                              if (typeof content === 'string') {
+                                const lines = content.split('');
+                                const newDumps = [];
+                                for (const line of lines) {
+                                  const trimmed = line.trim();
+                                  if (trimmed && !trimmed.startsWith('//')) {
+                                    newDumps.push({
+                                      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                                      name: trimmed,
+                                      desc: 'Imported'
+                                    });
+                                  }
+                                }
+                                setDumps(prev => [...newDumps, ...prev]);
+                                alert(language === 'es' ? `Se cargaron ${newDumps.length} firmas de volcado.` : `Loaded ${newDumps.length} dump signatures.`);
+                              }
+                            };
+                            reader.readAsText(file);
                           }
                         }}
                       />
@@ -2415,7 +2459,16 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800 shrink-0 self-end sm:self-auto text-sm font-mono">
+                  <div className="flex items-center gap-4 shrink-0 self-end sm:self-auto">
+                    <div className="flex items-center gap-2">
+                        <button onClick={handleDownloadLogs} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded transition text-sm flex items-center gap-1 border border-slate-700">
+                           <Download className="w-4 h-4" /> {language === 'es' ? 'Descargar' : 'Download'}
+                        </button>
+                        <button onClick={handleClearLogs} className="bg-red-950/40 hover:bg-red-900/60 text-red-400 px-3 py-1.5 rounded transition text-sm flex items-center gap-1 border border-red-900/50">
+                           <Trash2 className="w-4 h-4" /> {language === 'es' ? 'Limpiar' : 'Clear'}
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800 text-sm font-mono">
                     <button 
                       onClick={() => setLogFilter('ALL')}
                       className={`px-2.5 py-1 rounded transition ${logFilter === 'ALL' ? 'bg-slate-800 text-amber-300 border border-amber-500/20' : 'text-slate-500 hover:text-slate-300'}`}
@@ -2437,7 +2490,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                   </div>
                 </div>
 
-                {/* Event Logs list */}
+                </div>{/* Event Logs list */}
                 <div className="mt-4 space-y-3">
                   {filteredLogs.length > 0 ? (
                     filteredLogs.map((log) => (
