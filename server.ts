@@ -41,7 +41,16 @@ async function seedData() {
 seedData().catch(console.error);
 
 async function startServer() {
-  const app = express();
+  
+const originalError = console.error;
+console.error = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('BloomFilter')) return;
+    if (args[0] && args[0].message && args[0].message.includes('BloomFilter')) return;
+    originalError(...args);
+};
+
+const app = express();
+app.set('trust proxy', true);
   
   app.use(cors());
     app.use((req, res, next) => {
@@ -276,7 +285,7 @@ async function startServer() {
       const projectId = req.query.projectId || "DEFAULT";
       
       const configQuery = await getDocs(query(collection(db, 'config'), where('projectId', '==', projectId), limit(1)));
-      let config = {};
+      let config: any = {};
       if (!configQuery.empty) config = configQuery.docs[0].data();
 
       let out = "[WINDOWS]\n";
@@ -340,7 +349,10 @@ async function startServer() {
               parsedBody = JSON.parse(decryptedStr);
           }
       }
-      const { username, hwid, ip, clientVersion, fileModified, token, secretToken } = parsedBody;
+      const { username, hwid, clientVersion, fileModified, token, secretToken } = parsedBody;
+      let ip = parsedBody.ip || req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || 'Unknown';
+      if (Array.isArray(ip)) ip = ip[0];
+      if (ip.includes(',')) ip = ip.split(',')[0];
       const actualToken = token || secretToken;
       const timestamp = new Date().toISOString();
       
@@ -433,7 +445,7 @@ async function startServer() {
           return res.json({
             success: true,
             action: "CONTINUE",
-            message: "Usted ha sido autenticado por Onyx Guard, disfrute del juego",
+            message: "Bienvenido a Onyx Guard! Se ha registrado su PC de forma segura en nuestro sistema.",
             sessionToken: Math.random().toString(36).substring(2, 15)
           });
         }
@@ -458,7 +470,7 @@ async function startServer() {
       res.json({
         success: true,
         action: "CONTINUE",
-        message: "Bienvenido",
+        message: "Bienvenido de vuelta! Onyx Guard lo ha autenticado exitosamente y protege su conexion.",
         sessionToken: Math.random().toString(36).substring(2, 15)
       });
       

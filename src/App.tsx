@@ -39,7 +39,7 @@ import { Brain,
   Activity
  } from 'lucide-react';
 import { auth, googleProvider, db } from './firebase';
-import { collection, query, where, onSnapshot, doc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDocs, setDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { seedDefaultDumps } from './seed_dumps';
 
@@ -263,6 +263,7 @@ export default function App() {
 
   // Copy code helper
   const [copied, setCopied] = useState(false);
+  const [isUploadingDumps, setIsUploadingDumps] = useState(false);
 
   const handleCopyCode = (codeText: string) => {
     navigator.clipboard.writeText(codeText);
@@ -546,22 +547,40 @@ export default function App() {
   const cppCode = useMemo(() => {
     // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
     const filesArrayContent = clientFiles.length > 0 
-      ? clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',')
-      : `    { "", "" } // Dummy element`;
+      ? clientFiles.map(f => `    { \"${f.path.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}\", \"${f.expectedHash}\" }`).join(',\n')
+      : `    { \"\", \"\" } // Dummy element`;
       
     const blacklistedArrayContent = blacklistedPrograms.length > 0
-      ? blacklistedPrograms.map(p => `    "${p}"`).join(',')
-      : `    "DummyWindowName" // Dummy element`;
+      ? blacklistedPrograms.map(p => `    \"${p.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}\"`).join(',\n')
+      : `    \"DummyWindowName\" // Dummy element`;
 
     const memorySignaturesContent = dumps.length > 0
       ? dumps.map(d => {
-          if (!d.rawRule) return `    { 0, 0x0, {0}, 0, "${d.name}" }`;
-          const p = d.rawRule.split('	');
-          if (p.length < 4) return `    { 0, 0x0, {0}, 0, "${d.name}" }`;
+          const safeNameFallback = (d.name || "Unknown").replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
+          if (!d.rawRule) return `    { 0, 0x0, {0}, 0, "${safeNameFallback}" }`;
+          
+          const p = [];
+          const regex = /"([^"]+)"|(\S+)/g;
+          let m;
+          while ((m = regex.exec(d.rawRule)) !== null) {
+              if (m[1]) p.push(m[1]);
+              else if (m[2]) p.push(m[2]);
+          }
+          
+          if (p.length < 4) return `    { 0, 0x0, {0}, 0, "${safeNameFallback}" }`;
+          
           const type = p[0];
-          const addr = p[1].replace(/"/g, '');
-          const bytes = p.slice(2, -1).map(b => b.trim() ? b.trim() : '0').join(', ');
-          const name = p[p.length - 1].replace(/"/g, '');
+          let addrHex = p[1].replace(/0x/i, '').trim();
+          if (!/^[0-9a-fA-F]+$/.test(addrHex)) addrHex = '0';
+          const addr = '0x' + addrHex;
+          
+          const bytes = p.slice(2, -1).map(b => {
+              let tb = b.replace(/0x/i, '').trim();
+              if (!/^[0-9a-fA-F]{1,2}$/.test(tb)) return '0x00';
+              return '0x' + tb;
+          }).join(', ');
+          
+          const name = p[p.length - 1].replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
           return `    { ${type}, ${addr}, { ${bytes} }, ${p.length - 3}, "${name}" }`;
       }).join(',\n')
       : `    { 0, 0x0, {0}, 0, "Dummy" }`;
@@ -574,6 +593,7 @@ export default function App() {
 // ============================================================================
 ${usePch ? '#include "pch.h"' : ''}
 #include <windows.h>
+#include <stdint.h>
 #include <objbase.h>
 #include <wininet.h>
 #include <shellapi.h>
@@ -606,13 +626,22 @@ ClientFile CRITICAL_FILES[] = {
 ${filesArrayContent}
 };
 
+std::vector<std::string> DYNAMIC_WINDOWS;
+struct DynamicSignature {
+    DWORD address;
+    std::vector<BYTE> signature;
+    std::string name;
+};
+std::vector<DynamicSignature> DYNAMIC_DUMPS;
+
 ${enableAntiMacro ? `// Blacklisted Window Names (Cheat Engine, AutoClicker, etc)
 const char* BLACKLISTED_WINDOWS[] = {
 ${blacklistedArrayContent}
 };
 
 bool ScanForBlacklistedWindows() {
-    for (const auto& win : DYNAMIC_WINDOWS) {
+    for (size_t i = 0; i < DYNAMIC_WINDOWS.size(); i++) {
+        std::string win = DYNAMIC_WINDOWS[i];
         if (FindWindowA(NULL, win.c_str()) != NULL) return true;
     }
     for (int i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
@@ -626,13 +655,18 @@ bool ScanForBlacklistedWindows() {
 
 // Simple Hardware ID generator using MAC Address & System Information
 std::string GetHardwareID() {
-    char compName[MAX_COMPUTERNAME_LENGTH + 1];
-    DWORD compNameLen = sizeof(compName);
-    GetComputerNameA(compName, &compNameLen);
+    char compName[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+    DWORD compNameLen = MAX_COMPUTERNAME_LENGTH + 1;
+    if (!GetComputerNameA(compName, &compNameLen)) {
+        lstrcpyA(compName, "UNKNOWN_PC");
+    }
     
-    std::string hwid = "HWID-";
-    hwid += compName;
-    return hwid;
+    DWORD volSerial = 0;
+    GetVolumeInformationA("C:\\\\", NULL, 0, &volSerial, NULL, NULL, NULL, 0);
+    
+    char hwidBuffer[256];
+    wsprintfA(hwidBuffer, "HWID-%s-%08X", compName, volSerial);
+    return std::string(hwidBuffer);
 }
 
 ${enableDllScanner ? `// Injected DLL Scanner
@@ -658,7 +692,7 @@ ${enableMemoryScanner ? `// Memory Signature Scanner
 struct MemorySignature {
     int type;
     DWORD address;
-    BYTE signature[32];
+    BYTE signature[128];
     int sigLength;
     const char* name;
 };
@@ -669,10 +703,11 @@ ${memorySignaturesContent}
 
 bool ScanMemorySignatures() {
     HANDLE hProcess = GetCurrentProcess();
-    for (const auto& sig : DYNAMIC_DUMPS) {
-        BYTE buffer[32];
+    for (size_t i = 0; i < DYNAMIC_DUMPS.size(); i++) {
+        DynamicSignature sig = DYNAMIC_DUMPS[i];
+        BYTE buffer[128];
         SIZE_T bytesRead;
-        if (ReadProcessMemory(hProcess, (LPCVOID)sig.address, buffer, sig.signature.size(), &bytesRead)) {
+        if (ReadProcessMemory(hProcess, (LPCVOID)(uintptr_t)sig.address, buffer, sig.signature.size(), &bytesRead)) {
             bool match = true;
             for (size_t j = 0; j < sig.signature.size() && j < bytesRead; j++) {
                 if (buffer[j] != sig.signature[j]) {
@@ -687,11 +722,11 @@ bool ScanMemorySignatures() {
     for (int i = 0; i < sizeof(MEMORY_SIGNATURES) / sizeof(MEMORY_SIGNATURES[0]); i++) {
         if (std::string(MEMORY_SIGNATURES[i].name) == "Dummy") continue;
         
-        BYTE buffer[32];
+        BYTE buffer[128];
         SIZE_T bytesRead;
         
         // Scan specific memory address
-        if (ReadProcessMemory(hProcess, (LPCVOID)MEMORY_SIGNATURES[i].address, buffer, MEMORY_SIGNATURES[i].sigLength, &bytesRead)) {
+        if (ReadProcessMemory(hProcess, (LPCVOID)(uintptr_t)MEMORY_SIGNATURES[i].address, buffer, MEMORY_SIGNATURES[i].sigLength, &bytesRead)) {
             bool match = true;
             for (int j = 0; j < MEMORY_SIGNATURES[i].sigLength; j++) {
                 if (buffer[j] != MEMORY_SIGNATURES[i].signature[j]) {
@@ -739,6 +774,21 @@ std::string EncryptPayload(const std::string& data) {
 }` : ''}
 
 // Simple MD5 file hashing (placeholder for actual cryptographic implementation)
+std::string JsonEscape(const std::string& str) {
+    std::string escaped;
+    for (char c : str) {
+        if (c == '"') escaped += "\\\\\\\"";
+        else if (c == '\\\\') escaped += "\\\\\\\\\\\\\\\\";
+        else if (c == '\\b') escaped += "\\\\\\\\b";
+        else if (c == '\\f') escaped += "\\\\\\\\f";
+        else if (c == '\\n') escaped += "\\\\\\\\n";
+        else if (c == '\\r') escaped += "\\\\\\\\r";
+        else if (c == '\\t') escaped += "\\\\\\\\t";
+        else escaped += c;
+    }
+    return escaped;
+}
+
 std::string CalculateFileMD5(const std::string& filePath) {
     // In a real DLL, you would open the file using CreateFile() or ifstream, 
     // and pass the bytes to Windows CryptoAPI (CryptHashData)
@@ -758,16 +808,21 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
 
     // Parse URL host and path
     std::string host = "127.0.0.1";
-    std::string path = "/api/validate";
+    std::string path = "/api/auth";
     size_t protocolPos = AUTH_SERVER_URL.find("://");
     std::string urlWithoutProtocol = (protocolPos == std::string::npos) ? AUTH_SERVER_URL : AUTH_SERVER_URL.substr(protocolPos + 3);
     size_t slashPos = urlWithoutProtocol.find("/");
     if (slashPos != std::string::npos) {
         host = urlWithoutProtocol.substr(0, slashPos);
-        path = urlWithoutProtocol.substr(slashPos);
+        std::string basePath = urlWithoutProtocol.substr(slashPos);
+        if (basePath.back() == '/') basePath.pop_back();
+        if (basePath.length() >= 9 && basePath.substr(basePath.length() - 9) == "/api/auth") {
+            path = basePath;
+        } else {
+            path = basePath + "/api/auth";
+        }
     } else {
         host = urlWithoutProtocol;
-        path = "/";
     }
 
     INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
@@ -797,20 +852,20 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
     // Build Payload JSON body
     std::stringstream json;
     json << "{"
-         << "\\"username\\": \\"" << username << "\\","
-         << "\\"hwid\\": \\"" << hwid << "\\","
-         << "\\"clientVersion\\": \\"" << CLIENT_VERSION << "\\","
-         << "\\"secretToken\\": \\"" << SECRET_TOKEN << "\\","
-         << "\\"fileModified\\": \\"" << (modifiedFile.empty() ? "none" : modifiedFile) << "\\""
+         << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
+         << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
+         << "\\\"clientVersion\\\": \\\"" << JsonEscape(CLIENT_VERSION) << "\\\","
+         << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\","
+         << "\\\"fileModified\\\": \\\"" << (modifiedFile.empty() ? "none" : JsonEscape(modifiedFile)) << "\\\""
          << "}";
     
     std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\\r\";
+    std::string headers = "Content-Type: application/json\\r\\n";
 
 ${enablePayloadEncryption ? `    // Encrypting Payload before sending
     payload = EncryptPayload(payload);
     // Add custom header to indicate encrypted payload
-    headers += "X-Payload-Encrypted: true\\r\";
+    headers += "X-Payload-Encrypted: true\\r\\n";
 ` : ''}
 
     BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
@@ -828,6 +883,15 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
         // Simple JSON response check
         if (responseString.find("\\"success\\":true") != std::string::npos || responseString.find("\\"success\\": true") != std::string::npos) {
             isAuthorized = true;
+            size_t msgStart = responseString.find("\\\"message\\\":\\\"");
+            if (msgStart != std::string::npos) {
+                msgStart += 11;
+                size_t msgEnd = responseString.find("\\\"", msgStart);
+                if (msgEnd != std::string::npos) {
+                    std::string msg = responseString.substr(msgStart, msgEnd - msgStart);
+                    g_startupMessage = msg;
+                }
+            }
         } else {
             std::string err = "Server rejected auth.\Response: " + responseString;
             MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
@@ -843,9 +907,65 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
     return isAuthorized;
 }
 
+
+// Global tray icon data so we can update it from other threads
+NOTIFYICONDATAA g_nid = { 0 };
+bool g_trayIconAdded = false;
+std::string g_startupMessage = "";
+
 // Action taken if security check fails
 void HandleFailure(const std::string& message) {
 ${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? '    MessageBoxA(NULL, message.c_str(), "Onyx Guard", MB_OK | MB_ICONERROR);\n    ExitProcess(0);' : '    int* p = nullptr;\n    *p = 0xDEADBEEF;')}
+}
+
+
+HICON CreateOnyxLogoIcon() {
+    int size = 32;
+    HDC hScreenDC = GetDC(NULL);
+    HDC hMemDC = CreateCompatibleDC(hScreenDC);
+    HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, size, size);
+    HBITMAP hMask = CreateCompatibleBitmap(hScreenDC, size, size);
+
+    SelectObject(hMemDC, hMask);
+    HBRUSH whiteBrush = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH blackBrush = CreateSolidBrush(RGB(0, 0, 0));
+    RECT r = {0, 0, size, size};
+    FillRect(hMemDC, &r, whiteBrush);
+    
+    POINT pts[4] = { {size/2, 2}, {size-2, size/2}, {size/2, size-2}, {2, size/2} };
+    SelectObject(hMemDC, GetStockObject(NULL_PEN));
+    SelectObject(hMemDC, blackBrush);
+    Polygon(hMemDC, pts, 4);
+
+    SelectObject(hMemDC, hBitmap);
+    FillRect(hMemDC, &r, blackBrush);
+    
+    HBRUSH tealBrush = CreateSolidBrush(RGB(45, 212, 191));
+    SelectObject(hMemDC, tealBrush);
+    Polygon(hMemDC, pts, 4);
+    
+    POINT pts2[4] = { {size/2, 8}, {size-8, size/2}, {size/2, size-8}, {8, size/2} };
+    HBRUSH darkBrush = CreateSolidBrush(RGB(15, 20, 25));
+    SelectObject(hMemDC, darkBrush);
+    Polygon(hMemDC, pts2, 4);
+
+    DeleteObject(whiteBrush);
+    DeleteObject(blackBrush);
+    DeleteObject(tealBrush);
+    DeleteObject(darkBrush);
+
+    ICONINFO ii = {0};
+    ii.fIcon = TRUE;
+    ii.hbmMask = hMask;
+    ii.hbmColor = hBitmap;
+    HICON hIcon = CreateIconIndirect(&ii);
+
+    DeleteObject(hBitmap);
+    DeleteObject(hMask);
+    DeleteDC(hMemDC);
+    ReleaseDC(NULL, hScreenDC);
+
+    return hIcon;
 }
 
 // System Tray Icon Routine
@@ -867,16 +987,24 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
 
     HWND hwnd = CreateWindowA(wc.lpszClassName, "OnyxGuard", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, wc.hInstance, NULL);
 
-    NOTIFYICONDATAA nid = { 0 };
-    nid.cbSize = sizeof(NOTIFYICONDATAA);
-    nid.hWnd = hwnd;
-    nid.uID = 1001;
-    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    nid.uCallbackMessage = WM_USER + 1;
-    nid.hIcon = LoadIcon(NULL, IDI_SHIELD); // Default Windows shield icon
-    strcpy_s(nid.szTip, "Onyx Guard Anti-Hack (Active)");
+    g_nid.cbSize = sizeof(NOTIFYICONDATAA);
+    g_nid.hWnd = hwnd;
+    g_nid.uID = 1001;
+    g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_nid.uCallbackMessage = WM_USER + 1;
+    g_nid.hIcon = CreateOnyxLogoIcon();
+    strcpy_s(g_nid.szTip, "Onyx Guard Anti-Hack (Active)");
 
-    Shell_NotifyIconA(NIM_ADD, &nid);
+    Shell_NotifyIconA(NIM_ADD, &g_nid);
+    g_trayIconAdded = true;
+
+    if (!g_startupMessage.empty()) {
+        g_nid.uFlags = NIF_INFO;
+        strcpy_s(g_nid.szInfo, g_startupMessage.c_str());
+        strcpy_s(g_nid.szInfoTitle, "Onyx Guard");
+        g_nid.dwInfoFlags = NIIF_INFO;
+        Shell_NotifyIconA(NIM_MODIFY, &g_nid);
+    }
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -884,7 +1012,9 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
         DispatchMessage(&msg);
     }
 
-    Shell_NotifyIconA(NIM_DELETE, &nid);
+    Shell_NotifyIconA(NIM_DELETE, &g_nid);
+    DestroyIcon(g_nid.hIcon);
+    g_trayIconAdded = false;
     return 0;
 }
 
@@ -894,17 +1024,17 @@ void ShowSplashScreen() {
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = DefWindowProcA;
     wc.hInstance = GetModuleHandleA(NULL);
-    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hbrBackground = CreateSolidBrush(RGB(15, 15, 20));
     wc.lpszClassName = "OnyxSplashClass";
     RegisterClassA(&wc);
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
-    int splashW = 450;
-    int splashH = 220;
+    int splashW = 500;
+    int splashH = 260;
 
     HWND hwndSplash = CreateWindowExA(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | 0x00080000, // WS_EX_LAYERED
         "OnyxSplashClass",
         "OnyxGuard Loading",
         WS_POPUP | WS_VISIBLE,
@@ -913,60 +1043,110 @@ void ShowSplashScreen() {
         NULL, NULL, wc.hInstance, NULL
     );
 
+    // Dynamic library call for SetLayeredWindowAttributes to ensure legacy compatibility
+    HMODULE hUser32 = GetModuleHandleA("user32.dll");
+    if (hUser32) {
+        typedef BOOL(WINAPI *SLWA)(HWND, COLORREF, BYTE, DWORD);
+        SLWA pSetLayeredWindowAttributes = (SLWA)GetProcAddress(hUser32, "SetLayeredWindowAttributes");
+        if (pSetLayeredWindowAttributes) pSetLayeredWindowAttributes(hwndSplash, 0, 240, 2 /* LWA_ALPHA */);
+    }
+
     if (hwndSplash) {
         HDC hdc = GetDC(hwndSplash);
-        
         RECT rect;
         GetClientRect(hwndSplash, &rect);
-        
-        // Draw background
-        HBRUSH bgBrush = CreateSolidBrush(RGB(5, 5, 8));
-        FillRect(hdc, &rect, bgBrush);
-        DeleteObject(bgBrush);
-        
-        // Draw Cyan border
-        HPEN hPen = CreatePen(PS_SOLID, 2, RGB(0, 200, 255));
-        HGDIOBJ oldPen = SelectObject(hdc, hPen);
-        HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
-        HGDIOBJ oldBrush = SelectObject(hdc, nullBrush);
-        Rectangle(hdc, rect.left + 2, rect.top + 2, rect.right - 2, rect.bottom - 2);
-        SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBrush);
-        DeleteObject(hPen);
 
-        SetBkMode(hdc, TRANSPARENT);
+        HFONT hFontTitle = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        HFONT hFontDesc = CreateFontA(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
         
-        // Draw Title
-        SetTextColor(hdc, RGB(0, 200, 255));
-        HFONT hFont = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_MODERN, "Consolas");
-        SelectObject(hdc, hFont);
-        
-        const char* splashText = "ONYX GUARD";
-        const char* splashSub = "ANTI-CHEAT SYSTEM";
-        const char* loadText = "Initializing Matrix...";
-        const char* moduleText = "Loading Security Modules: OK";
-        const char* versionText = "v1.0 (Protecting Main.exe)";
-        
-        TextOutA(hdc, 30, 40, splashText, strlen(splashText));
-        
-        HFONT hFontSub = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_MODERN, "Consolas");
-        SelectObject(hdc, hFontSub);
-        SetTextColor(hdc, RGB(100, 150, 255));
-        TextOutA(hdc, 30, 75, splashSub, strlen(splashSub));
-        
-        SetTextColor(hdc, RGB(180, 180, 180));
-        TextOutA(hdc, 30, 120, loadText, strlen(loadText));
-        TextOutA(hdc, 30, 140, moduleText, strlen(moduleText));
-        
-        SetTextColor(hdc, RGB(80, 80, 80));
-        TextOutA(hdc, 30, 180, versionText, strlen(versionText));
+        const char* steps[] = {
+            "Initializing OnyxGuard Core...",
+            "Establishing Secure Connection...",
+            "Scanning Memory Signatures...",
+            "Verifying File Integrity...",
+            "Loading Anti-Hack Modules...",
+            "Securing Process Environment..."
+        };
 
+        for (int i = 0; i <= 100; i += 2) {
+            HBRUSH bgBrush = CreateSolidBrush(RGB(12, 12, 16));
+            FillRect(hdc, &rect, bgBrush);
+            DeleteObject(bgBrush);
+
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(45, 212, 191));
+            HGDIOBJ oldPen = SelectObject(hdc, hPen);
+            HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+            HGDIOBJ oldBrush = SelectObject(hdc, nullBrush);
+            Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+            SelectObject(hdc, oldPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(hPen);
+
+            SetBkMode(hdc, TRANSPARENT);
+            
+            
+            // Draw Onyx Logo Gem
+            int cx = splashW / 2;
+            int cy = 60;
+            int size = 30;
+            POINT pts[4] = { {cx, cy - size}, {cx + size, cy}, {cx, cy + size}, {cx - size, cy} };
+            HBRUSH tealBrush = CreateSolidBrush(RGB(45, 212, 191));
+            HGDIOBJ oldBrush2 = SelectObject(hdc, tealBrush);
+            HPEN tealPen = CreatePen(PS_SOLID, 2, RGB(45, 212, 191));
+            HGDIOBJ oldPen2 = SelectObject(hdc, tealPen);
+            Polygon(hdc, pts, 4);
+            
+            POINT ptsInner[4] = { {cx, cy - size/2 + 2}, {cx + size/2 - 2, cy}, {cx, cy + size/2 - 2}, {cx - size/2 + 2, cy} };
+            HBRUSH darkBrush = CreateSolidBrush(RGB(12, 12, 16));
+            SelectObject(hdc, darkBrush);
+            Polygon(hdc, ptsInner, 4);
+            
+            SelectObject(hdc, oldBrush2);
+            SelectObject(hdc, oldPen2);
+            DeleteObject(tealBrush);
+            DeleteObject(tealPen);
+            DeleteObject(darkBrush);
+
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SelectObject(hdc, hFontTitle);
+            RECT titleRect = { 0, 100, splashW, 140 };
+            DrawTextA(hdc, "ONYX GUARD", -1, &titleRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            SetTextColor(hdc, RGB(148, 163, 184));
+            SelectObject(hdc, hFontDesc);
+            RECT subRect = { 0, 135, splashW, 160 };
+            DrawTextA(hdc, "ADVANCED CLIENT PROTECTION", -1, &subRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            int stepIdx = (i / 18);
+            if (stepIdx > 5) stepIdx = 5;
+            SetTextColor(hdc, RGB(45, 212, 191));
+            RECT textRect = { 40, 185, splashW - 40, 205 };
+            DrawTextA(hdc, steps[stepIdx], -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            char pct[16];
+            wsprintfA(pct, "%d%%", i);
+            RECT pctRect = { 40, 185, splashW - 40, 205 };
+            DrawTextA(hdc, pct, -1, &pctRect, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+            RECT barBg = { 40, 210, splashW - 40, 220 };
+            HBRUSH barBgBrush = CreateSolidBrush(RGB(30, 41, 59));
+            FillRect(hdc, &barBg, barBgBrush);
+            DeleteObject(barBgBrush);
+
+            int fillW = ((splashW - 80) * i) / 100;
+            if (fillW > 0) {
+                RECT barFill = { 40, 210, 40 + fillW, 220 };
+                HBRUSH barFillBrush = CreateSolidBrush(RGB(45, 212, 191));
+                FillRect(hdc, &barFill, barFillBrush);
+                DeleteObject(barFillBrush);
+            }
+
+            Sleep(100);
+        }
+
+        DeleteObject(hFontTitle);
+        DeleteObject(hFontDesc);
         ReleaseDC(hwndSplash, hdc);
-        UpdateWindow(hwndSplash);
-
-        // Simulate Loading Time (blocks main thread so the game waits)
-        Sleep(3500); 
-        
         DestroyWindow(hwndSplash);
         UnregisterClassA("OnyxSplashClass", wc.hInstance);
     }
@@ -1014,13 +1194,7 @@ DWORD WINAPI DirectoryMonitorThread(LPVOID lpParam) {
 // ==========================================
 // DYNAMIC REAL-TIME CLOUD LISTS (Firebase)
 // ==========================================
-struct DynamicSignature {
-    DWORD address;
-    std::vector<BYTE> signature;
-    std::string name;
-};
-std::vector<std::string> DYNAMIC_WINDOWS;
-std::vector<DynamicSignature> DYNAMIC_DUMPS;
+
 
 void FetchDynamicLists() {
     HINTERNET hInternet = InternetOpenA("OnyxGuard", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
@@ -1033,7 +1207,13 @@ void FetchDynamicLists() {
         host = AUTH_SERVER_URL.substr(protocolPos + 3);
         size_t slashPos = host.find("/");
         if (slashPos != std::string::npos) {
-            path = host.substr(slashPos) + "/dumplist?projectId=${activeProjectId}";
+            std::string basePath = host.substr(slashPos);
+            if (basePath.back() == '/') basePath.pop_back();
+            if (basePath.length() >= 9 && basePath.substr(basePath.length() - 9) == "/api/auth") {
+                path = basePath.substr(0, basePath.length() - 9) + "/api/dumplist?projectId=\$\{activeProjectId\}";
+            } else {
+                path = basePath + "/api/dumplist?projectId=\$\{activeProjectId\}";
+            }
             host = host.substr(0, slashPos);
         } else {
             path = "/api/dumplist?projectId=${activeProjectId}";
@@ -1065,7 +1245,7 @@ void FetchDynamicLists() {
                 std::string line;
                 int mode = 0;
                 while(std::getline(ss, line)) {
-                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    if (!line.empty() && line.back() == '\\r') line.pop_back();
                     if(line == "[WINDOWS]") { mode = 1; continue; }
                     if(line == "[DUMPS]") { mode = 2; continue; }
                     if(line.empty()) continue;
@@ -1073,12 +1253,23 @@ void FetchDynamicLists() {
                     if(mode == 1) {
                         DYNAMIC_WINDOWS.push_back(line);
                     } else if(mode == 2) {
-                        std::stringstream ls(line);
-                        std::string part;
+                        bool inQuotes = false;
+                        std::string currentToken;
                         std::vector<std::string> parts;
-                        while(std::getline(ls, part, '\t')) {
-                            parts.push_back(part);
+                        for (char c : line) {
+                            if (c == '"') {
+                                inQuotes = !inQuotes;
+                            } else if ((c == ' ' || c == '\\t') && !inQuotes) {
+                                if (!currentToken.empty()) {
+                                    parts.push_back(currentToken);
+                                    currentToken.clear();
+                                }
+                            } else {
+                                currentToken += c;
+                            }
                         }
+                        if (!currentToken.empty()) parts.push_back(currentToken);
+
                         if(parts.size() >= 4) {
                             try {
                                 DynamicSignature sig;
@@ -1134,9 +1325,11 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
 
     // Connect to the web API to validate player login & computer HWID
     // In actual production, username can be retrieved from launcher launch parameters
-    char compNameUser[MAX_COMPUTERNAME_LENGTH + 1];
-    DWORD compNameUserLen = sizeof(compNameUser);
-    GetComputerNameA(compNameUser, &compNameUserLen);
+    char compNameUser[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+    DWORD compNameUserLen = MAX_COMPUTERNAME_LENGTH + 1;
+    if (!GetComputerNameA(compNameUser, &compNameUserLen)) {
+        lstrcpyA(compNameUser, "Player");
+    }
     std::string accountName = compNameUser; 
     
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
@@ -2694,13 +2887,26 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                             reader.onload = async (event) => {
                               const content = event.target?.result;
                               if (typeof content === 'string') {
-                                const lines = content.split('\n');
+                                const lines = content.split(/\r?\n/);
                                 const newDumps = [];
+                                const seenRules = new Set(dumps.map(d => d.rawRule));
                                 for (const line of lines) {
                                   const trimmed = line.trim();
-                                  if (trimmed && !trimmed.startsWith('//')) {
-                                    const parts = trimmed.split('\t');
-                                    const name = parts.length > 2 ? parts[parts.length - 1].replace(/"/g, '') : trimmed;
+                                  if (trimmed && !trimmed.startsWith('//') && !seenRules.has(trimmed)) {
+                                    seenRules.add(trimmed); // prevent duplicates in the file itself
+                                    // Some files use spaces instead of tabs to align, we split by any whitespace if tab is not found, but it's safer to just take the last part for name.
+                                    const parts = trimmed.split(/[\t]+/).filter(Boolean);
+                                    let name = trimmed;
+                                    if (parts.length > 2) {
+                                      name = parts[parts.length - 1].replace(/"/g, '');
+                                    } else {
+                                      // try splitting by spaces
+                                      const spaceParts = trimmed.split(/[\s]+/).filter(Boolean);
+                                      if (spaceParts.length > 2) {
+                                          name = spaceParts[spaceParts.length - 1].replace(/"/g, '');
+                                      }
+                                    }
+                                    
                                     const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
                                     newDumps.push({
                                       id,
@@ -2715,17 +2921,32 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                                 
                                 // Batch upload to firestore
                                 try {
-                                  await Promise.all(newDumps.map(d => setDoc(doc(db, 'dumps', d.id), d)));
+                                  setIsUploadingDumps(true);
+                                  // Chunk into batches of 500
+                                  const CHUNK_SIZE = 500;
+                                  for (let i = 0; i < newDumps.length; i += CHUNK_SIZE) {
+                                    const chunk = newDumps.slice(i, i + CHUNK_SIZE);
+                                    const batch = writeBatch(db);
+                                    chunk.forEach(d => {
+                                      batch.set(doc(db, 'dumps', d.id), d);
+                                    });
+                                    await batch.commit();
+                                  }
                                   alert(language === 'es' ? `Se subieron ${newDumps.length} firmas a la base de datos de OnyxGuard.` : `Uploaded ${newDumps.length} signatures to OnyxGuard DB.`);
                                 } catch(e) {
                                   console.error(e);
                                   alert("Error uploading dumps to database.");
+                                } finally {
+                                  setIsUploadingDumps(false);
                                 }
                               }
                             };
                             reader.readAsText(file);
+                            // clear file input
+                            e.target.value = '';
                           }
                         }}
+                        disabled={isUploadingDumps}
                       />
                       <div className="bg-slate-900 p-3 rounded-full group-hover:scale-110 transition-transform">
                         <svg className="w-6 h-6 text-slate-400 group-hover:text-amber-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2734,10 +2955,14 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-300 font-mono">
-                          {language === 'es' ? 'Subir Dump.List / Dump.db completas' : 'Upload full Dump.List / Dump.db'}
+                          {isUploadingDumps 
+                            ? (language === 'es' ? 'Cargando y procesando firmas...' : 'Uploading and processing signatures...') 
+                            : (language === 'es' ? 'Subir Dump.List / Dump.db completas' : 'Upload full Dump.List / Dump.db')}
                         </h4>
                         <p className="text-xs text-slate-500 mt-1">
-                          {language === 'es' ? 'Arrastra y suelta tu archivo aquí o haz clic para buscar.' : 'Drag & drop your file here or click to browse.'}
+                          {isUploadingDumps 
+                            ? (language === 'es' ? 'Por favor espera, esto puede tomar unos minutos dependiendo del tamaño del archivo.' : 'Please wait, this may take a few minutes depending on file size.') 
+                            : (language === 'es' ? 'Arrastra y suelta tu archivo aquí o haz clic para buscar.' : 'Drag & drop your file here or click to browse.')}
                         </p>
                       </div>
                     </label>
@@ -2852,6 +3077,55 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     ? 'La Inteligencia Artificial de OnyxGuard utiliza modelos de aprendizaje profundo (Gemini) para analizar comportamientos anómalos, inyecciones de memoria y modificaciones de archivos no registradas. Aquí puedes ver sus veredictos en tiempo real.'
                     : 'OnyxGuard AI uses deep learning models (Gemini) to analyze anomalous behaviors, memory injections, and unregistered file modifications. Here you can see its verdicts in real-time.'}
                 </p>
+                <div className="flex gap-4 mb-6 relative z-10">
+                  <button 
+                    onClick={async () => {
+                      alert(language === 'es' ? 'Simulando intento de hackeo... La IA está analizando el archivo.' : 'Simulating hack attempt... AI is analyzing the file.');
+                      try {
+                        await fetch('/api/auth', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            username: 'Hacker_Test',
+                            hwid: 'SIMULATED-HWID-HACK',
+                            ip: '127.0.0.1',
+                            clientVersion: clientVersion,
+                            token: securityToken,
+                            fileModified: 'C:\\Games\\MuOnline\\CheatEngine_Bypass.dll'
+                          })
+                        });
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/50 rounded hover:bg-red-500/30 transition text-sm font-bold flex items-center gap-2"
+                  >
+                    <Brain className="w-4 h-4" />
+                    {language === 'es' ? 'Simular Archivo Malicioso (Hack)' : 'Simulate Malicious File (Hack)'}
+                  </button>
+
+                  <button 
+                    onClick={async () => {
+                        alert(language === 'es' ? 'Simulando archivo seguro... La IA está analizando el archivo.' : 'Simulating safe file... AI is analyzing the file.');
+                        try {
+                          await fetch('/api/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              username: 'Normal_Player',
+                              hwid: 'SIMULATED-HWID-SAFE',
+                              ip: '127.0.0.1',
+                              clientVersion: clientVersion,
+                              token: securityToken,
+                              fileModified: 'C:\\Games\\MuOnline\\Logs\\update_2026.log'
+                            })
+                          });
+                        } catch (e) { console.error(e); }
+                    }}
+                    className="px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/50 rounded hover:bg-blue-500/30 transition text-sm font-bold flex items-center gap-2"
+                  >
+                    <Brain className="w-4 h-4" />
+                    {language === 'es' ? 'Simular Archivo Seguro (Log)' : 'Simulate Safe File (Log)'}
+                  </button>
+                </div>
 
                 <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 h-[500px] overflow-y-auto font-mono text-xs">
                   {logs.filter(l => l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó')).length === 0 ? (
