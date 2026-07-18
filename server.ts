@@ -267,6 +267,40 @@ async function startServer() {
     }
   });
 
+
+  // ==========================================
+  // DLL REAL-TIME DUMPLIST ENDPOINT
+  // ==========================================
+  app.get("/api/dumplist", async (req, res) => {
+    try {
+      const projectId = req.query.projectId || "DEFAULT";
+      
+      const configQuery = await getDocs(query(collection(db, 'config'), where('projectId', '==', projectId), limit(1)));
+      let config = {};
+      if (!configQuery.empty) config = configQuery.docs[0].data();
+
+      let out = "[WINDOWS]\n";
+      if (config.blacklistedPrograms && Array.isArray(config.blacklistedPrograms)) {
+        for (const w of config.blacklistedPrograms) {
+          out += w + "\n";
+        }
+      }
+
+      out += "[DUMPS]\n";
+      const dumpsQuery = await getDocs(query(collection(db, 'dumps'), where('projectId', '==', projectId)));
+      for (const doc of dumpsQuery.docs) {
+        const d = doc.data();
+        if (d.rawRule) {
+          out += d.rawRule + "\n";
+        }
+      }
+      
+      res.type('text/plain').send(out);
+    } catch(e) {
+      res.status(500).send("ERROR");
+    }
+  });
+
   // ==========================================
   // DLL AUTHENTICATION ENDPOINT (Game Client)
   // ==========================================
@@ -365,6 +399,20 @@ async function startServer() {
         if (!isSafe) {
             await logEntry("BLOCKED", `Modified file detected: ${fileModified}`);
             return res.json({ success: false, action: config.actionOnFailure, message: `Onyx Guard AI detectó modificación maliciosa: ${fileModified}` });
+        }
+      }
+
+      if (config.enableMultiClientBlock && hwid) {
+        const activeClientsQuery = await getDocs(query(collection(db, 'logs'), where('projectId', '==', projectId), where('hwid', '==', hwid), where('status', '==', 'ALLOWED')));
+        // Simplified multi-client check (just checking recent allowed logins within 5 mins for same HWID)
+        const recentLogins = activeClientsQuery.docs.filter(d => {
+            const timeDiff = new Date().getTime() - new Date(d.data().timestamp).getTime();
+            return timeDiff < 5 * 60 * 1000;
+        });
+        const limitClients = config.multiClientLimit || 3;
+        if (recentLogins.length >= limitClients) {
+            await logEntry("BLOCKED", `Multi-client limit reached (${limitClients})`);
+            return res.json({ success: false, action: config.actionOnFailure, message: `Multi-client limit reached (${limitClients})` });
         }
       }
 

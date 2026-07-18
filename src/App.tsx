@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { translations } from './translations';
-import { 
+import { Brain,  
   Shield, 
   Terminal, 
   Cpu, 
@@ -37,9 +37,11 @@ import {
   Wifi,
   ExternalLink,
   Activity
-} from 'lucide-react';
-import { auth, googleProvider } from './firebase';
+ } from 'lucide-react';
+import { auth, googleProvider, db } from './firebase';
+import { collection, query, where, onSnapshot, doc, getDocs, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { seedDefaultDumps } from './seed_dumps';
 
 // Interfaces for our state management
 interface AuthLog {
@@ -63,6 +65,13 @@ interface Account {
   lastLogin: string;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  serverUrl: string;
+  securityToken: string;
+}
+
 interface ClientFile {
   id: string;
   path: string;
@@ -73,14 +82,16 @@ interface ClientFile {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+    const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
     });
-    return () => unsubscribe();
+    return () => {
+            unsubscribe();
+    };
   }, []);
 
   const loginWithGoogle = async () => {
@@ -104,7 +115,7 @@ export default function App() {
   const t = translations[language];
 
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'architecture' | 'generator' | 'dashboard' | 'sandbox' | 'guide'>('architecture');
+  const [activeTab, setActiveTab] = useState<string>('architecture');
 
   // Generator Options (Dynamic C++ Code generation)
   const [serverUrl, setServerUrl] = useState('https://onyx-guard.onrender.com/api/auth');
@@ -112,11 +123,14 @@ export default function App() {
   const [clientVersion, setClientVersion] = useState('1.04d');
   const [enableHwidCheck, setEnableHwidCheck] = useState(true);
   const [enableFileCheck, setEnableFileCheck] = useState(true);
+  const [enableRealtimeMonitor, setEnableRealtimeMonitor] = useState(false);
   const [enableMultiClientBlock, setEnableMultiClientBlock] = useState(true);
+  const [multiClientLimit, setMultiClientLimit] = useState(3);
   const [enableAntiMacro, setEnableAntiMacro] = useState(true);
   const [enableAntiDebug, setEnableAntiDebug] = useState(true);
   const [enableDllScanner, setEnableDllScanner] = useState(true);
   const [enableMemoryScanner, setEnableMemoryScanner] = useState(false);
+  const [enableSplashScreen, setEnableSplashScreen] = useState(true);
   const [enableProcessBinding, setEnableProcessBinding] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
   const [blacklistedPrograms, setBlacklistedPrograms] = useState<string[]>(['Cheat Engine', 'AutoClicker', 'SpeedHack', 'WPE PRO', 'OllyDbg', 'Wireshark']);
@@ -135,16 +149,28 @@ export default function App() {
 
   // Fetch projects on mount
   useEffect(() => {
-    fetch('/api/projects')
-      .then(res => res.json())
-      .then(data => {
-        if(Array.isArray(data)) setProjects(data);
-        if (data.length > 0 && !activeProjectId) {
-          setActiveProjectId(data[0].id);
-        }
-      })
-      .catch(console.error);
+    const q = query(collection(db, 'projects'));
+    return onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => d.data() as Project);
+      setProjects(data);
+      if (data.length > 0 && !activeProjectId) {
+        setActiveProjectId(data[0].id);
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    const qDumps = query(collection(db, 'dumps'), where('projectId', '==', activeProjectId));
+    const unsub = onSnapshot(qDumps, (snap) => {
+      const dbDumps = snap.docs.map(d => d.data());
+      // sort by timestamp descending
+      dbDumps.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setDumps(dbDumps);
+      if (dbDumps.length === 0) seedDefaultDumps(activeProjectId);
+    });
+    return () => unsub();
+  }, [activeProjectId]);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -161,11 +187,14 @@ export default function App() {
         if (data.actionOnFailure) setActionOnFailure(data.actionOnFailure);
         if (data.enableHwidCheck !== undefined) setEnableHwidCheck(data.enableHwidCheck);
         if (data.enableFileCheck !== undefined) setEnableFileCheck(data.enableFileCheck);
+        if (data.enableRealtimeMonitor !== undefined) setEnableRealtimeMonitor(data.enableRealtimeMonitor);
         if (data.enableMultiClientBlock !== undefined) setEnableMultiClientBlock(data.enableMultiClientBlock);
+        if (data.multiClientLimit !== undefined) setMultiClientLimit(data.multiClientLimit);
         if (data.enableAntiMacro !== undefined) setEnableAntiMacro(data.enableAntiMacro);
         if (data.enableAntiDebug !== undefined) setEnableAntiDebug(data.enableAntiDebug);
         if (data.enableDllScanner !== undefined) setEnableDllScanner(data.enableDllScanner);
         if (data.enableMemoryScanner !== undefined) setEnableMemoryScanner(data.enableMemoryScanner);
+        if (data.enableSplashScreen !== undefined) setEnableSplashScreen(data.enableSplashScreen);
         if (data.enableProcessBinding !== undefined) setEnableProcessBinding(data.enableProcessBinding);
         if (data.enablePayloadEncryption !== undefined) setEnablePayloadEncryption(data.enablePayloadEncryption);
         if (data.blacklistedPrograms !== undefined) setBlacklistedPrograms(data.blacklistedPrograms);
@@ -199,12 +228,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableMultiClientBlock, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -226,12 +255,7 @@ export default function App() {
   // Dump.List state
   const [newDumpName, setNewDumpName] = useState('');
   const [newDumpDesc, setNewDumpDesc] = useState('');
-  const [dumps, setDumps] = useState([
-    { id: '1', name: 'CheatEngine.exe', desc: 'Memory Editor' },
-    { id: '2', name: 'SpeedHack.dll', desc: 'Game speed modifier' },
-    { id: '3', name: 'Haste.dll', desc: 'Packet injector' },
-    { id: '4', name: 'MuBot.exe', desc: 'Auto-clicker / Bot' },
-  ]);
+  const [dumps, setDumps] = useState<any[]>([]);
   
   // Search and filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -257,7 +281,7 @@ export default function App() {
       }
       segments.push(seg);
     }
-    return `HWID-${segments.join('-')}`;
+    return `HWID-${segments.join("\n")}`;
   };
 
   // Pre-fill a random HWID
@@ -290,10 +314,17 @@ export default function App() {
   };
 
   // Add File Integrity rules
-  const handleAddDump = (e: React.FormEvent) => {
+  const handleAddDump = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDumpName) return;
-    setDumps([{ id: Date.now().toString(), name: newDumpName, desc: newDumpDesc || 'Unknown' }, ...dumps]);
+    if (!newDumpName || !activeProjectId) return;
+    const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+    await setDoc(doc(db, 'dumps', id), {
+      id,
+      projectId: activeProjectId,
+      name: newDumpName,
+      desc: newDumpDesc || 'Manual Entry',
+      timestamp: new Date().toISOString()
+    });
     setNewDumpName('');
     setNewDumpDesc('');
   };
@@ -398,6 +429,7 @@ export default function App() {
     const csvContent = "data:text/csv;charset=utf-8," 
       + "Timestamp,Type,Username,Status,Reason,HWID,IP,Version\n"
       + logs.map(l => `${l.timestamp},${l.type},${l.username},${l.status},"${l.reason}",${l.hwid},${l.ip},${l.clientVersion}`).join("\n");
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -515,11 +547,24 @@ export default function App() {
     // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
     const filesArrayContent = clientFiles.length > 0 
       ? clientFiles.map(f => `    { "${f.path}", "${f.expectedHash}" }`).join(',')
-      : `    { "", "" } // Dummy element to prevent empty array compilation error`;
+      : `    { "", "" } // Dummy element`;
       
     const blacklistedArrayContent = blacklistedPrograms.length > 0
       ? blacklistedPrograms.map(p => `    "${p}"`).join(',')
-      : `    "DummyWindowName" // Dummy element to prevent empty array compilation error`;
+      : `    "DummyWindowName" // Dummy element`;
+
+    const memorySignaturesContent = dumps.length > 0
+      ? dumps.map(d => {
+          if (!d.rawRule) return `    { 0, 0x0, {0}, 0, "${d.name}" }`;
+          const p = d.rawRule.split('	');
+          if (p.length < 4) return `    { 0, 0x0, {0}, 0, "${d.name}" }`;
+          const type = p[0];
+          const addr = p[1].replace(/"/g, '');
+          const bytes = p.slice(2, -1).map(b => b.trim() ? b.trim() : '0').join(', ');
+          const name = p[p.length - 1].replace(/"/g, '');
+          return `    { ${type}, ${addr}, { ${bytes} }, ${p.length - 3}, "${name}" }`;
+      }).join(',\n')
+      : `    { 0, 0x0, {0}, 0, "Dummy" }`;
 
     return `// ============================================================================
 //  ONYX GUARD ANTI-HACK & CLIENT INTEGRITY PLUGIN
@@ -528,10 +573,12 @@ export default function App() {
 //  Compiled using: Visual Studio 2019/2022 (MSVC Toolset)
 // ============================================================================
 ${usePch ? '#include "pch.h"' : ''}
-#include <windows.h>#include <objbase.h>
+#include <windows.h>
+#include <objbase.h>
 #include <wininet.h>
 #include <shellapi.h>
-#include <psapi.h>#pragma comment(lib, "psapi.lib")
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -565,6 +612,9 @@ ${blacklistedArrayContent}
 };
 
 bool ScanForBlacklistedWindows() {
+    for (const auto& win : DYNAMIC_WINDOWS) {
+        if (FindWindowA(NULL, win.c_str()) != NULL) return true;
+    }
     for (int i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
         if (std::string(BLACKLISTED_WINDOWS[i]) == "DummyWindowName") continue;
         if (FindWindowA(NULL, BLACKLISTED_WINDOWS[i]) != NULL) {
@@ -605,9 +655,53 @@ bool ScanForInjectedDLLs() {
 }` : ''}
 
 ${enableMemoryScanner ? `// Memory Signature Scanner
+struct MemorySignature {
+    int type;
+    DWORD address;
+    BYTE signature[32];
+    int sigLength;
+    const char* name;
+};
+
+MemorySignature MEMORY_SIGNATURES[] = {
+${memorySignaturesContent}
+};
+
 bool ScanMemorySignatures() {
-    // Basic conceptual signature scanner. Real deployments use VirtualQueryEx
-    // to map pages and ReadProcessMemory to match AoB (Array of Bytes) patterns.
+    HANDLE hProcess = GetCurrentProcess();
+    for (const auto& sig : DYNAMIC_DUMPS) {
+        BYTE buffer[32];
+        SIZE_T bytesRead;
+        if (ReadProcessMemory(hProcess, (LPCVOID)sig.address, buffer, sig.signature.size(), &bytesRead)) {
+            bool match = true;
+            for (size_t j = 0; j < sig.signature.size() && j < bytesRead; j++) {
+                if (buffer[j] != sig.signature[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+    }
+
+    for (int i = 0; i < sizeof(MEMORY_SIGNATURES) / sizeof(MEMORY_SIGNATURES[0]); i++) {
+        if (std::string(MEMORY_SIGNATURES[i].name) == "Dummy") continue;
+        
+        BYTE buffer[32];
+        SIZE_T bytesRead;
+        
+        // Scan specific memory address
+        if (ReadProcessMemory(hProcess, (LPCVOID)MEMORY_SIGNATURES[i].address, buffer, MEMORY_SIGNATURES[i].sigLength, &bytesRead)) {
+            bool match = true;
+            for (int j = 0; j < MEMORY_SIGNATURES[i].sigLength; j++) {
+                if (buffer[j] != MEMORY_SIGNATURES[i].signature[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+    }
     return false;
 }` : ''}
 
@@ -751,18 +845,7 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
 
 // Action taken if security check fails
 void HandleFailure(const std::string& message) {
-#if ${actionOnFailure === 'EXIT' ? '1' : '0'}
-    // Terminate instantly
-    ExitProcess(0);
-#elif ${actionOnFailure === 'MSG_BOX' ? '1' : '0'}
-    // Show descriptive Error Box to player
-    MessageBoxA(NULL, message.c_str(), "Onyx Guard Anti-Hack", MB_OK | MB_ICONERROR | MB_TOPMOST);
-    ExitProcess(0);
-#else
-    // Simulate deliberate crash to prevent memory dumping
-    int* p = nullptr;
-    *p = 0xDEADBEEF; 
-#endif
+${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? '    MessageBoxA(NULL, message.c_str(), "Onyx Guard", MB_OK | MB_ICONERROR);\n    ExitProcess(0);' : '    int* p = nullptr;\n    *p = 0xDEADBEEF;')}
 }
 
 // System Tray Icon Routine
@@ -806,18 +889,234 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
 }
 
 // Thread routine launched immediately upon main.exe launch
+${enableSplashScreen ? `// Simple Splash Screen UI
+void ShowSplashScreen() {
+    WNDCLASSA wc = {0};
+    wc.lpfnWndProc = DefWindowProcA;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = "OnyxSplashClass";
+    RegisterClassA(&wc);
+
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    int splashW = 450;
+    int splashH = 220;
+
+    HWND hwndSplash = CreateWindowExA(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        "OnyxSplashClass",
+        "OnyxGuard Loading",
+        WS_POPUP | WS_VISIBLE,
+        (screenW - splashW) / 2, (screenH - splashH) / 2,
+        splashW, splashH,
+        NULL, NULL, wc.hInstance, NULL
+    );
+
+    if (hwndSplash) {
+        HDC hdc = GetDC(hwndSplash);
+        
+        RECT rect;
+        GetClientRect(hwndSplash, &rect);
+        
+        // Draw background
+        HBRUSH bgBrush = CreateSolidBrush(RGB(5, 5, 8));
+        FillRect(hdc, &rect, bgBrush);
+        DeleteObject(bgBrush);
+        
+        // Draw Cyan border
+        HPEN hPen = CreatePen(PS_SOLID, 2, RGB(0, 200, 255));
+        HGDIOBJ oldPen = SelectObject(hdc, hPen);
+        HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+        HGDIOBJ oldBrush = SelectObject(hdc, nullBrush);
+        Rectangle(hdc, rect.left + 2, rect.top + 2, rect.right - 2, rect.bottom - 2);
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldBrush);
+        DeleteObject(hPen);
+
+        SetBkMode(hdc, TRANSPARENT);
+        
+        // Draw Title
+        SetTextColor(hdc, RGB(0, 200, 255));
+        HFONT hFont = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_MODERN, "Consolas");
+        SelectObject(hdc, hFont);
+        
+        const char* splashText = "ONYX GUARD";
+        const char* splashSub = "ANTI-CHEAT SYSTEM";
+        const char* loadText = "Initializing Matrix...";
+        const char* moduleText = "Loading Security Modules: OK";
+        const char* versionText = "v1.0 (Protecting Main.exe)";
+        
+        TextOutA(hdc, 30, 40, splashText, strlen(splashText));
+        
+        HFONT hFontSub = CreateFontA(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_MODERN, "Consolas");
+        SelectObject(hdc, hFontSub);
+        SetTextColor(hdc, RGB(100, 150, 255));
+        TextOutA(hdc, 30, 75, splashSub, strlen(splashSub));
+        
+        SetTextColor(hdc, RGB(180, 180, 180));
+        TextOutA(hdc, 30, 120, loadText, strlen(loadText));
+        TextOutA(hdc, 30, 140, moduleText, strlen(moduleText));
+        
+        SetTextColor(hdc, RGB(80, 80, 80));
+        TextOutA(hdc, 30, 180, versionText, strlen(versionText));
+
+        ReleaseDC(hwndSplash, hdc);
+        UpdateWindow(hwndSplash);
+
+        // Simulate Loading Time (blocks main thread so the game waits)
+        Sleep(3500); 
+        
+        DestroyWindow(hwndSplash);
+        UnregisterClassA("OnyxSplashClass", wc.hInstance);
+    }
+}
+` : ''}
+
+${enableRealtimeMonitor ? `// Real-time File System Watcher Thread
+DWORD WINAPI DirectoryMonitorThread(LPVOID lpParam) {
+    HANDLE hDir = CreateFileA(
+        ".", // Current directory (game folder)
+        FILE_LIST_DIRECTORY,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+
+    if (hDir == INVALID_HANDLE_VALUE) return 1;
+
+    char buffer[1024];
+    DWORD bytesReturned;
+    while (true) {
+        if (ReadDirectoryChangesW(
+            hDir,
+            &buffer,
+            sizeof(buffer),
+            TRUE, // Watch subtree
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
+            &bytesReturned,
+            NULL,
+            NULL
+        )) {
+            // If any critical file was modified while the game is running, terminate it.
+            // For simplicity, we trigger on any modification in this example.
+            HandleFailure("REAL-TIME INTEGRITY VIOLATION:\\nGame files were modified while running.");
+        }
+    }
+    CloseHandle(hDir);
+    return 0;
+}
+` : ''}
+
+
+// ==========================================
+// DYNAMIC REAL-TIME CLOUD LISTS (Firebase)
+// ==========================================
+struct DynamicSignature {
+    DWORD address;
+    std::vector<BYTE> signature;
+    std::string name;
+};
+std::vector<std::string> DYNAMIC_WINDOWS;
+std::vector<DynamicSignature> DYNAMIC_DUMPS;
+
+void FetchDynamicLists() {
+    HINTERNET hInternet = InternetOpenA("OnyxGuard", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) return;
+
+    std::string host = "127.0.0.1";
+    std::string path = "/api/dumplist?projectId=${activeProjectId}";
+    size_t protocolPos = AUTH_SERVER_URL.find("://");
+    if (protocolPos != std::string::npos) {
+        host = AUTH_SERVER_URL.substr(protocolPos + 3);
+        size_t slashPos = host.find("/");
+        if (slashPos != std::string::npos) {
+            path = host.substr(slashPos) + "/dumplist?projectId=${activeProjectId}";
+            host = host.substr(0, slashPos);
+        } else {
+            path = "/api/dumplist?projectId=${activeProjectId}";
+        }
+    }
+
+    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), 
+        AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
+        NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+
+    if (hConnect) {
+        DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
+        if (AUTH_SERVER_URL.find("https://") != std::string::npos) {
+            flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
+        }
+
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "GET", path.c_str(), NULL, NULL, NULL, flags, 0);
+        if (hRequest) {
+            if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+                std::string response;
+                char buffer[1024];
+                DWORD bytesRead;
+                while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+                    response.append(buffer, bytesRead);
+                }
+
+                // Parse response
+                std::stringstream ss(response);
+                std::string line;
+                int mode = 0;
+                while(std::getline(ss, line)) {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    if(line == "[WINDOWS]") { mode = 1; continue; }
+                    if(line == "[DUMPS]") { mode = 2; continue; }
+                    if(line.empty()) continue;
+                    
+                    if(mode == 1) {
+                        DYNAMIC_WINDOWS.push_back(line);
+                    } else if(mode == 2) {
+                        std::stringstream ls(line);
+                        std::string part;
+                        std::vector<std::string> parts;
+                        while(std::getline(ls, part, '\t')) {
+                            parts.push_back(part);
+                        }
+                        if(parts.size() >= 4) {
+                            try {
+                                DynamicSignature sig;
+                                sig.address = std::stoul(parts[1], nullptr, 16);
+                                sig.name = parts.back();
+                                if(sig.name.size() > 2 && sig.name.front() == '"' && sig.name.back() == '"') {
+                                    sig.name = sig.name.substr(1, sig.name.size() - 2);
+                                }
+                                for(size_t i = 2; i < parts.size() - 1; i++) {
+                                    sig.signature.push_back((BYTE)std::stoul(parts[i], nullptr, 16));
+                                }
+                                DYNAMIC_DUMPS.push_back(sig);
+                            } catch(...) {}
+                        }
+                    }
+                }
+            }
+            InternetCloseHandle(hRequest);
+        }
+        InternetCloseHandle(hConnect);
+    }
+    InternetCloseHandle(hInternet);
+}
+
 DWORD WINAPI IntegrityCheckThread(LPVOID lpParam) {
+    FetchDynamicLists();
+    ${enableRealtimeMonitor ? 'CreateThread(NULL, 0, DirectoryMonitorThread, NULL, 0, NULL);' : ''}
     Sleep(500); // Wait for host window to complete loading
     
 ${enableProcessBinding ? `    // 1. Verify we are inside main.exe
     if (!VerifyHostProcess()) {
-        HandleFailure("UNAUTHORIZED PROCESS:\Onyx Guard must only be loaded via main.exe.");
+        HandleFailure("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
         return 1;
     }` : ''}
 
 ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     if (CheckForDebugger()) {
-        HandleFailure("DEBUGGER DETECTED:\Please close all reverse-engineering tools.");
+        HandleFailure("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
         return 1;
     }` : ''}
 
@@ -843,19 +1142,19 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
     if (!status) {
-        HandleFailure("CRITICAL SECURITY ERROR:\Your client files or Hardware ID are unauthorized.");
+        HandleFailure("CRITICAL SECURITY ERROR:\\nYour client files or Hardware ID are unauthorized.");
     }
     
     ${enableAntiMacro ? `// Start continuous macro checking loop
     while(true) {
         if(ScanForBlacklistedWindows()) {
-            HandleFailure("ILLEGAL SOFTWARE DETECTED:\A blacklisted macro, auto-clicker, or memory editor was found.");
+            HandleFailure("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
         }
 ${enableDllScanner ? `        if(ScanForInjectedDLLs()) {
-            HandleFailure("DLL INJECTION DETECTED:\A malicious DLL module was found in memory.");
+            HandleFailure("DLL INJECTION DETECTED:\\nA malicious DLL module was found in memory.");
         }` : ''}
 ${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
-            HandleFailure("MEMORY TAMPERING DETECTED:\Known cheat signatures found in memory.");
+            HandleFailure("MEMORY TAMPERING DETECTED:\\nKnown cheat signatures found in memory.");
         }` : ''}
         Sleep(3000); // Check every 3 seconds
     }` : ''}
@@ -866,29 +1165,38 @@ ${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
 // DLL Entry Point
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
-    case DLL_PROCESS_ATTACH:
+    case DLL_PROCESS_ATTACH: {
         // Disable unnecessary thread execution logs to optimize performance
         DisableThreadLibraryCalls(hModule);
         
+        ${enableSplashScreen ? "ShowSplashScreen();" : ""}
+        
         // Prevent multi-client execution if configured
-        ${enableMultiClientBlock ? `CreateMutexA(NULL, TRUE, "Global\\\\MuOnlineSecureMutexUniqueKey");
+        ${enableMultiClientBlock ? (multiClientLimit > 1 ? `HANDLE hSemaphore = CreateSemaphoreA(NULL, ${multiClientLimit}, ${multiClientLimit}, "Global\\\\MuOnlineSecureSemaphore");
+        if (hSemaphore != NULL) {
+            if (WaitForSingleObject(hSemaphore, 0) == WAIT_TIMEOUT) {
+                MessageBoxA(NULL, "Maximum allowed clients reached on this PC!", "OnyxGuard", MB_OK | MB_ICONWARNING);
+                ExitProcess(0);
+            }
+        }` : `CreateMutexA(NULL, TRUE, "Global\\\\MuOnlineSecureMutexUniqueKey");
         if (GetLastError() == ERROR_ALREADY_EXISTS) {
-            MessageBoxA(NULL, "Multi-Client is disabled on this server!", "MuOnline Engine", MB_OK | MB_ICONWARNING);
+            MessageBoxA(NULL, "Multi-Client is disabled on this server!", "OnyxGuard", MB_OK | MB_ICONWARNING);
             ExitProcess(0);
-        }` : '// Multi-client checks disabled'}
+        }`) : '// Multi-client checks disabled'}
 
         // Start safety background thread
         CreateThread(NULL, 0, IntegrityCheckThread, NULL, 0, NULL);
         // Start system tray icon thread
         CreateThread(NULL, 0, TrayIconThread, NULL, 0, NULL);
         break;
+    }
     case DLL_PROCESS_DETACH:
         break;
     }
     return TRUE;
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableMultiClientBlock, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch]);
 
 
   const csharpCode = useMemo(() => {
@@ -944,7 +1252,7 @@ ${enableProcessBinding ? `                // Enforce main.exe binding
                 Process currentProcess = Process.GetCurrentProcess();
                 if (!currentProcess.ProcessName.Equals("main", StringComparison.OrdinalIgnoreCase))
                 {
-                    EnforceBlock("UNAUTHORIZED PROCESS:\Onyx Guard must only be loaded via main.exe.");
+                    EnforceBlock("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
                     return false;
                 }` : ''}
 
@@ -953,7 +1261,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                 CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isRemote);
                 if (IsDebuggerPresent() || isRemote)
                 {
-                    EnforceBlock("DEBUGGER DETECTED:\Please close all reverse-engineering tools.");
+                    EnforceBlock("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
                     return false;
                 }` : ''}
 
@@ -1001,7 +1309,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                                 {
                                     if (p.MainWindowTitle.Contains(bw) || p.ProcessName.Contains(bw))
                                     {
-                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED:\A blacklisted macro, auto-clicker, or memory editor was found.");
+                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
                                     }
                                 }
                             }
@@ -1097,19 +1405,12 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
 
         private static void EnforceBlock(string errorMsg)
         {
-            #if ${actionOnFailure === 'EXIT' ? '1' : '0'}
-            ExitProcess(0);
-            #elif ${actionOnFailure === 'MSG_BOX' ? '1' : '0'}
-            MessageBox.Show(errorMsg, "Onyx Guard Anti-Hack", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            ExitProcess(0);
-            #else
-            Process.GetCurrentProcess().Kill();
-            #endif
+            ${actionOnFailure === 'EXIT' ? '            Process.GetCurrentProcess().Kill();' : (actionOnFailure === 'MSG_BOX' ? '            MessageBox.Show(errorMsg, "Onyx Guard", MessageBoxButtons.OK, MessageBoxIcon.Error);\n            Process.GetCurrentProcess().Kill();' : '            Process.GetCurrentProcess().Kill();')}
         }
     }
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
 
 
   // Filtered Logs
@@ -1137,8 +1438,33 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#050508] flex flex-col items-center justify-center relative overflow-hidden font-sans">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/20 via-[#050508] to-[#050508] pointer-events-none"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[100px] animate-pulse"></div>
+        
+        <div className="z-10 flex flex-col items-center">
+          <div className="relative flex items-center justify-center mb-8">
+            <div className="absolute w-32 h-32 border border-blue-500/30 rounded-full animate-[spin_4s_linear_infinite]"></div>
+            <div className="absolute w-28 h-28 border border-cyan-400/20 rounded-full animate-[spin_3s_linear_infinite_reverse]"></div>
+            <Shield className="w-16 h-16 text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.6)]" />
+          </div>
+          
+          <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-300 to-blue-500 tracking-tighter mb-4 uppercase drop-shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+            OnyxGuard
+          </h1>
+          
+          <div className="flex items-center space-x-3 mb-12">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
+            <p className="text-blue-300/80 font-mono text-xs tracking-[0.4em] uppercase">
+              Initializing Matrix
+            </p>
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping [animation-delay:0.2s]"></div>
+          </div>
+          
+          <div className="w-64 h-1 bg-gray-900 rounded-full overflow-hidden relative shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+            <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 to-cyan-400 w-full origin-left animate-[scale-x_3s_ease-in-out_infinite]"></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1216,7 +1542,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
             </div>
             
             <p className="text-center text-slate-600 text-xs mt-6 font-mono">
-              v{config.clientVersion} // ENCRYPTED SESSION
+              v1.0.4d // ENCRYPTED SESSION
             </p>
           </div>
           
@@ -1483,6 +1809,21 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                 <div className="leading-none">
                   <div className="text-sm text-red-400/90">{t.nav.dumps || (language === 'es' ? 'Volcados de Procesos' : 'Process Dumps')}</div>
                   <span className="text-[9px] text-red-500/70 font-mono">{t.nav.dumpsSub || (language === 'es' ? 'Hacks bloqueados' : 'Blocked hacks')}</span>
+                </div>
+              </button>
+              <button 
+                id="tab-aimonitor"
+                onClick={() => setActiveTab('aimonitor')}
+                className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                  activeTab === 'aimonitor' 
+                    ? 'bg-blue-500/10 text-blue-300 border-l-2 border-blue-500 font-medium' 
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <Brain className="w-4 h-4 shrink-0 text-blue-400" />
+                <div className="leading-none">
+                  <div className="text-sm text-blue-400/90">{language === 'es' ? 'Monitor IA' : 'AI Monitor'}</div>
+                  <span className="text-[9px] text-blue-500/70 font-mono">{language === 'es' ? 'Analisis Inteligente' : 'Smart Analysis'}</span>
                 </div>
               </button>
 
@@ -1826,6 +2167,16 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     />
                     <span>{language === 'es' ? 'Suma MD5 de archivos' : 'Verify Client File Checksums'}</span>
                   </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
+                    <input 
+                      type="checkbox" 
+                      checked={enableRealtimeMonitor}
+                      onChange={(e) => setEnableRealtimeMonitor(e.target.checked)}
+                      className="accent-amber-500"
+                    />
+                    <span>{language === 'es' ? 'Monitoreo de Archivos en Tiempo Real (OS Watcher)' : 'Real-time File Monitor (OS Watcher)'}</span>
+                  </label>
+
 
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
@@ -1836,6 +2187,28 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     />
                     <span>{language === 'es' ? 'Bloquear Multi-Cliente (Mutex)' : 'Block Sandbox Multi-Clients'}</span>
                   </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
+                    <input 
+                      type="checkbox" 
+                      checked={enableSplashScreen}
+                      onChange={(e) => setEnableSplashScreen(e.target.checked)}
+                      className="accent-amber-500"
+                    />
+                    <span>{language === 'es' ? 'Mostrar Splash Screen al Iniciar' : 'Show Splash Screen on Startup'}</span>
+                  </label>
+
+                  {enableMultiClientBlock && (
+                    <div className="flex items-center gap-2 ml-6 mt-1 text-slate-400 text-sm">
+                      <span>{language === 'es' ? 'Límite (servidor):' : 'Limit (Server):'}</span>
+                      <input 
+                        type="number"
+                        min="1" max="10"
+                        value={multiClientLimit}
+                        onChange={(e) => setMultiClientLimit(Number(e.target.value))}
+                        className="bg-slate-950 border border-slate-700 rounded px-2 py-0.5 w-16 text-slate-200 text-xs"
+                      />
+                    </div>
+                  )}
 
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                     <input 
@@ -2318,23 +2691,36 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                           if (e.target.files && e.target.files[0]) {
                             const file = e.target.files[0];
                             const reader = new FileReader();
-                            reader.onload = (event) => {
+                            reader.onload = async (event) => {
                               const content = event.target?.result;
                               if (typeof content === 'string') {
-                                const lines = content.split('');
+                                const lines = content.split('\n');
                                 const newDumps = [];
                                 for (const line of lines) {
                                   const trimmed = line.trim();
                                   if (trimmed && !trimmed.startsWith('//')) {
+                                    const parts = trimmed.split('\t');
+                                    const name = parts.length > 2 ? parts[parts.length - 1].replace(/"/g, '') : trimmed;
+                                    const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
                                     newDumps.push({
-                                      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-                                      name: trimmed,
-                                      desc: 'Imported'
+                                      id,
+                                      projectId: activeProjectId,
+                                      name: name,
+                                      desc: 'Imported Signature',
+                                      rawRule: trimmed,
+                                      timestamp: new Date().toISOString()
                                     });
                                   }
                                 }
-                                setDumps(prev => [...newDumps, ...prev]);
-                                alert(language === 'es' ? `Se cargaron ${newDumps.length} firmas de volcado.` : `Loaded ${newDumps.length} dump signatures.`);
+                                
+                                // Batch upload to firestore
+                                try {
+                                  await Promise.all(newDumps.map(d => setDoc(doc(db, 'dumps', d.id), d)));
+                                  alert(language === 'es' ? `Se subieron ${newDumps.length} firmas a la base de datos de OnyxGuard.` : `Uploaded ${newDumps.length} signatures to OnyxGuard DB.`);
+                                } catch(e) {
+                                  console.error(e);
+                                  alert("Error uploading dumps to database.");
+                                }
                               }
                             };
                             reader.readAsText(file);
@@ -2362,6 +2748,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                           <tr className="bg-slate-900 text-amber-500 font-bold uppercase tracking-widest text-xs">
                             <th className="p-3">{t.dashboard.colHackName}</th>
                             <th className="p-3">{t.dashboard.colHackDesc}</th>
+                            <th className="p-3">{language === 'es' ? 'Fecha de Carga' : 'Loaded At'}</th>
                             <th className="p-3 text-right">{t.dashboard.colAction}</th>
                           </tr>
                         </thead>
@@ -2375,9 +2762,12 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                                 </div>
                               </td>
                               <td className="p-3 text-xs text-slate-400">{dump.desc}</td>
+                              <td className="p-3 text-xs text-slate-500 font-mono">
+                                {dump.timestamp ? new Date(dump.timestamp).toLocaleString() : 'N/A'}
+                              </td>
                               <td className="p-3 text-right">
                                 <button
-                                  onClick={() => setDumps(dumps.filter(d => d.id !== dump.id))}
+                                  onClick={() => deleteDoc(doc(db, 'dumps', dump.id))}
                                   className="text-slate-500 hover:text-red-400 transition"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -2387,7 +2777,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                           ))}
                           {dumps.length === 0 && (
                             <tr>
-                              <td colSpan={3} className="p-8 text-center text-slate-500 font-mono text-xs">
+                              <td colSpan={4} className="p-8 text-center text-slate-500 font-mono text-xs">
                                 No dump rules configured.
                               </td>
                             </tr>
@@ -2445,6 +2835,63 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
           )}
 
           {/* TAB 6: DASHBOARD (REAL-TIME EVENTS) */}
+
+          {activeTab === 'aimonitor' && (
+            <div className="space-y-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-5">
+                  <Brain className="w-48 h-48" />
+                </div>
+                
+                <h3 className="text-xl font-bold text-blue-400 flex items-center gap-2 mb-2 relative z-10">
+                  <Brain className="w-5 h-5" />
+                  {language === 'es' ? 'OnyxGuard IA - Monitor en Tiempo Real' : 'OnyxGuard AI - Real-time Monitor'}
+                </h3>
+                <p className="text-slate-400 mb-6 relative z-10 max-w-3xl text-sm">
+                  {language === 'es' 
+                    ? 'La Inteligencia Artificial de OnyxGuard utiliza modelos de aprendizaje profundo (Gemini) para analizar comportamientos anómalos, inyecciones de memoria y modificaciones de archivos no registradas. Aquí puedes ver sus veredictos en tiempo real.'
+                    : 'OnyxGuard AI uses deep learning models (Gemini) to analyze anomalous behaviors, memory injections, and unregistered file modifications. Here you can see its verdicts in real-time.'}
+                </p>
+
+                <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 h-[500px] overflow-y-auto font-mono text-xs">
+                  {logs.filter(l => l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó')).length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-4">
+                      <Brain className="w-12 h-12 opacity-20" />
+                      <p>{language === 'es' ? 'No hay eventos de IA registrados aún.' : 'No AI events logged yet.'}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {logs.filter(l => l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó')).map((log, i) => (
+                        <div key={log.id} className={`p-3 rounded border ${log.status === 'ALLOWED' ? 'bg-blue-900/10 border-blue-900/30' : 'bg-red-900/10 border-red-900/30'} flex flex-col gap-2`}>
+                          <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
+                            <span className="text-slate-500">{new Date(log.timestamp).toLocaleString()}</span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.status === 'ALLOWED' ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'}`}>
+                              {log.status === 'ALLOWED' ? 'VEREDICTO: SEGURO' : 'VEREDICTO: AMENAZA DETECTADA'}
+                            </span>
+                          </div>
+                          <div className="flex gap-4">
+                            <div className="flex-1">
+                              <span className="text-slate-500">Player:</span> <span className="text-slate-300">{log.username}</span>
+                            </div>
+                            <div className="flex-1">
+                              <span className="text-slate-500">HWID:</span> <span className="text-slate-300">{log.hwid}</span>
+                            </div>
+                          </div>
+                          <div className="mt-1 flex items-start gap-2">
+                            <Brain className={`w-4 h-4 mt-0.5 ${log.status === 'ALLOWED' ? 'text-blue-400' : 'text-red-400'}`} />
+                            <span className={`${log.status === 'ALLOWED' ? 'text-blue-300' : 'text-red-300'}`}>
+                              {log.reason}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'dashboard' && (
             <div className="flex flex-col gap-6 animate-fadeIn">
               <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 md:p-6 shadow-xl">
