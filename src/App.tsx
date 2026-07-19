@@ -36,9 +36,11 @@ import { Brain,
   Search,
   Wifi,
   ExternalLink,
-  Activity
+  Activity,
+  Upload
  } from 'lucide-react';
 import { auth, googleProvider, db } from './firebase';
+import SparkMD5 from 'spark-md5';
 import { collection, query, where, onSnapshot, doc, getDocs, setDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { seedDefaultDumps } from './seed_dumps';
@@ -132,6 +134,9 @@ export default function App() {
   const [enableMemoryScanner, setEnableMemoryScanner] = useState(false);
   const [enableSplashScreen, setEnableSplashScreen] = useState(true);
   const [enableProcessBinding, setEnableProcessBinding] = useState(true);
+  const [enableApiHookDetection, setEnableApiHookDetection] = useState(true);
+  const [enableHeuristics, setEnableHeuristics] = useState(true);
+  const [enableWatchdog, setEnableWatchdog] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
   const [blacklistedPrograms, setBlacklistedPrograms] = useState<string[]>(['Cheat Engine', 'AutoClicker', 'SpeedHack', 'WPE PRO', 'OllyDbg', 'Wireshark']);
   const [licenseExpiration, setLicenseExpiration] = useState('');
@@ -228,12 +233,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableWatchdog, blacklistedPrograms, licenseExpiration
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableWatchdog, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -250,6 +255,8 @@ export default function App() {
   const [newAccHwid, setNewAccHwid] = useState('');
   const [newFilePath, setNewFilePath] = useState('');
   const [newFileHash, setNewFileHash] = useState('');
+  const [newFileSize, setNewFileSize] = useState('1.5 MB');
+  const [isGeneratingMD5, setIsGeneratingMD5] = useState(false);
   const [newFileImportance, setNewFileImportance] = useState<'CRITICAL' | 'HIGH' | 'MEDIUM'>('CRITICAL');
 
   // Dump.List state
@@ -264,6 +271,7 @@ export default function App() {
   // Copy code helper
   const [copied, setCopied] = useState(false);
   const [isUploadingDumps, setIsUploadingDumps] = useState(false);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
   const handleCopyCode = (codeText: string) => {
     navigator.clipboard.writeText(codeText);
@@ -330,6 +338,41 @@ export default function App() {
     setNewDumpDesc('');
   };
 
+    const handleGenerateMD5 = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      
+      setIsGeneratingMD5(true);
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result;
+        if (result && result instanceof ArrayBuffer) {
+          const spark = new SparkMD5.ArrayBuffer();
+          spark.append(result);
+          const hash = spark.end();
+          
+          setNewFileHash(hash.toLowerCase());
+          // Just use the filename directly without path for simplicity, user can edit it
+          setNewFilePath(file.name);
+          
+          const sizeKb = file.size / 1024;
+          const sizeMb = sizeKb / 1024;
+          if (sizeMb > 1) {
+            setNewFileSize(sizeMb.toFixed(2) + ' MB');
+          } else {
+            setNewFileSize(sizeKb.toFixed(0) + ' KB');
+          }
+          
+          setIsGeneratingMD5(false);
+        }
+      };
+      
+      reader.readAsArrayBuffer(file);
+      e.target.value = '';
+    }
+  };
+
   const handleAddFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFilePath || !newFileHash || !activeProjectId) return;
@@ -342,7 +385,7 @@ export default function App() {
           filePath: newFilePath.trim(),
           expectedHash: newFileHash.trim().toLowerCase(),
           importance: newFileImportance,
-          fileSize: '1.5 MB'
+          fileSize: newFileSize
         })
       });
       fetch('/api/files', { headers: { 'x-project-id': activeProjectId } }).then(r => r.json()).then(data => { if(Array.isArray(data)) setClientFiles(data.map((f: any) => ({ ...f, path: f.filePath }))); });
@@ -603,6 +646,7 @@ ${usePch ? '#include "pch.h"' : ''}
 #include <string>
 #include <sstream>
 #include <vector>
+#include <cctype>
 #include <iomanip>
 
 #pragma comment(lib, "wininet.lib")
@@ -773,10 +817,71 @@ std::string EncryptPayload(const std::string& data) {
     return encrypted; 
 }` : ''}
 
+
+${enableApiHookDetection ? `// Advanced API Hooking Detection
+bool CheckApiHook(LPCSTR moduleName, LPCSTR procName) {
+    HMODULE hMod = GetModuleHandleA(moduleName);
+    if (!hMod) return false;
+    FARPROC procAddr = GetProcAddress(hMod, procName);
+    if (!procAddr) return false;
+    
+    BYTE* pBytes = (BYTE*)procAddr;
+    // Check for common hooking instructions: JMP (0xE9), Short JMP (0xEB), CALL (0xE8)
+    if (pBytes[0] == 0xE9 || pBytes[0] == 0xEB || pBytes[0] == 0xE8) {
+        return true; 
+    }
+    return false;
+}
+
+bool ScanForApiHooks() {
+    if (CheckApiHook("ws2_32.dll", "send") || 
+        CheckApiHook("ws2_32.dll", "recv") ||
+        CheckApiHook("kernel32.dll", "WriteProcessMemory") || 
+        CheckApiHook("kernel32.dll", "ReadProcessMemory")) {
+        return true;
+    }
+    return false;
+}` : ''}
+
+${enableHeuristics ? `// Heuristic Window Scanning
+BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
+    if (IsWindowVisible(hwnd)) {
+        char title[256];
+        GetWindowTextA(hwnd, title, sizeof(title));
+        std::string sTitle(title);
+        for(size_t i = 0; i < sTitle.length(); ++i) sTitle[i] = tolower(sTitle[i]);
+        
+        if (sTitle.length() > 0 && (
+            sTitle.find("hack") != std::string::npos ||
+            sTitle.find("cheat") != std::string::npos ||
+            sTitle.find("inject") != std::string::npos ||
+            sTitle.find("speedhack") != std::string::npos ||
+            sTitle.find("bypass") != std::string::npos
+            )) {
+            if (sTitle.find("google") == std::string::npos && 
+                sTitle.find("chrome") == std::string::npos && 
+                sTitle.find("firefox") == std::string::npos &&
+                sTitle.find("edge") == std::string::npos) {
+                
+                *((bool*)lParam) = true;
+                return FALSE;
+            }
+        }
+    }
+    return TRUE;
+}
+
+bool ScanHeuristicWindows() {
+    bool found = false;
+    EnumWindows(EnumWindowsProc, (LPARAM)&found);
+    return found;
+}` : ''}
+
 // Simple MD5 file hashing (placeholder for actual cryptographic implementation)
 std::string JsonEscape(const std::string& str) {
     std::string escaped;
-    for (char c : str) {
+    for (size_t i = 0; i < str.length(); ++i) {
+        char c = str[i];
         if (c == '"') escaped += "\\\\\\\"";
         else if (c == '\\\\') escaped += "\\\\\\\\\\\\\\\\";
         else if (c == '\\b') escaped += "\\\\\\\\b";
@@ -797,6 +902,11 @@ std::string CalculateFileMD5(const std::string& filePath) {
     if (filePath.find("item_eng.bmd") != std::string::npos) return "${clientFiles.find(f => f.path.includes('item_eng.bmd'))?.expectedHash || 'a87ff679a2f3e71d9181a67b7542122c'}";
     return "unverified_file_hash_signature";
 }
+
+// Global tray icon data so we can update it from other threads
+NOTIFYICONDATAA g_nid = { 0 };
+bool g_trayIconAdded = false;
+std::string g_startupMessage = "";
 
 // Perform validation request to backend web server
 bool PerformHandshake(const std::string& username, const std::string& hwid, const std::string& modifiedFile) {
@@ -893,7 +1003,7 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
                 }
             }
         } else {
-            std::string err = "Server rejected auth.\Response: " + responseString;
+            std::string err = "Server rejected auth. Response: " + responseString;
             MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
         }
     } else {
@@ -908,14 +1018,23 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
 }
 
 
-// Global tray icon data so we can update it from other threads
-NOTIFYICONDATAA g_nid = { 0 };
-bool g_trayIconAdded = false;
-std::string g_startupMessage = "";
+
 
 // Action taken if security check fails
 void HandleFailure(const std::string& message) {
-${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? '    MessageBoxA(NULL, message.c_str(), "Onyx Guard", MB_OK | MB_ICONERROR);\n    ExitProcess(0);' : '    int* p = nullptr;\n    *p = 0xDEADBEEF;')}
+    // Hide game window immediately so they can't keep playing
+    HWND hwnd = GetForegroundWindow();
+    if (hwnd) ShowWindow(hwnd, SW_HIDE);
+
+${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? `    if (g_trayIconAdded) {
+        g_nid.uFlags = NIF_INFO;
+        strcpy_s(g_nid.szInfo, message.c_str());
+        strcpy_s(g_nid.szInfoTitle, "Onyx Guard - Security");
+        g_nid.dwInfoFlags = NIIF_WARNING;
+        Shell_NotifyIconA(NIM_MODIFY, &g_nid);
+        Sleep(4000); // Give user 4 seconds to read the notification before closing
+    }
+    ExitProcess(0);` : '    int* p = NULL;\n    *p = 0xDEADBEEF;')}
 }
 
 
@@ -1004,6 +1123,9 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
         strcpy_s(g_nid.szInfoTitle, "Onyx Guard");
         g_nid.dwInfoFlags = NIIF_INFO;
         Shell_NotifyIconA(NIM_MODIFY, &g_nid);
+        
+        // Ensure user sees it with a message box
+        MessageBoxA(NULL, g_startupMessage.c_str(), "Onyx Guard - Welcome", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
     }
 
     MSG msg;
@@ -1182,7 +1304,7 @@ DWORD WINAPI DirectoryMonitorThread(LPVOID lpParam) {
         )) {
             // If any critical file was modified while the game is running, terminate it.
             // For simplicity, we trigger on any modification in this example.
-            HandleFailure("REAL-TIME INTEGRITY VIOLATION:\\nGame files were modified while running.");
+            HandleFailure("REAL-TIME INTEGRITY VIOLATION: Game files were modified while running.");
         }
     }
     CloseHandle(hDir);
@@ -1256,7 +1378,8 @@ void FetchDynamicLists() {
                         bool inQuotes = false;
                         std::string currentToken;
                         std::vector<std::string> parts;
-                        for (char c : line) {
+                        for (size_t k = 0; k < line.length(); ++k) {
+                            char c = line[k];
                             if (c == '"') {
                                 inQuotes = !inQuotes;
                             } else if ((c == ' ' || c == '\\t') && !inQuotes) {
@@ -1273,13 +1396,13 @@ void FetchDynamicLists() {
                         if(parts.size() >= 4) {
                             try {
                                 DynamicSignature sig;
-                                sig.address = std::stoul(parts[1], nullptr, 16);
+                                sig.address = strtoul(parts[1].c_str(), NULL, 16);
                                 sig.name = parts.back();
                                 if(sig.name.size() > 2 && sig.name.front() == '"' && sig.name.back() == '"') {
                                     sig.name = sig.name.substr(1, sig.name.size() - 2);
                                 }
                                 for(size_t i = 2; i < parts.size() - 1; i++) {
-                                    sig.signature.push_back((BYTE)std::stoul(parts[i], nullptr, 16));
+                                    sig.signature.push_back((BYTE)strtoul(parts[i].c_str(), NULL, 16));
                                 }
                                 DYNAMIC_DUMPS.push_back(sig);
                             } catch(...) {}
@@ -1301,13 +1424,13 @@ DWORD WINAPI IntegrityCheckThread(LPVOID lpParam) {
     
 ${enableProcessBinding ? `    // 1. Verify we are inside main.exe
     if (!VerifyHostProcess()) {
-        HandleFailure("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
+        HandleFailure("UNAUTHORIZED PROCESS: Onyx Guard must only be loaded via main.exe.");
         return 1;
     }` : ''}
 
 ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     if (CheckForDebugger()) {
-        HandleFailure("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
+        HandleFailure("DEBUGGER DETECTED: Please close all reverse-engineering tools.");
         return 1;
     }` : ''}
 
@@ -1335,19 +1458,25 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
     if (!status) {
-        HandleFailure("CRITICAL SECURITY ERROR:\\nYour client files or Hardware ID are unauthorized.");
+        HandleFailure("CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized.");
     }
     
     ${enableAntiMacro ? `// Start continuous macro checking loop
     while(true) {
         if(ScanForBlacklistedWindows()) {
-            HandleFailure("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
+            HandleFailure("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
         }
 ${enableDllScanner ? `        if(ScanForInjectedDLLs()) {
-            HandleFailure("DLL INJECTION DETECTED:\\nA malicious DLL module was found in memory.");
+            HandleFailure("DLL INJECTION DETECTED: A malicious DLL module was found in memory.");
         }` : ''}
 ${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
-            HandleFailure("MEMORY TAMPERING DETECTED:\\nKnown cheat signatures found in memory.");
+            HandleFailure("MEMORY TAMPERING DETECTED: Known cheat signatures found in memory.");
+        }` : ''}
+${enableApiHookDetection ? `        if(ScanForApiHooks()) {
+            HandleFailure("API HOOK DETECTED: Critical system functions have been modified.");
+        }` : ''}
+${enableHeuristics ? `        if(ScanHeuristicWindows()) {
+            HandleFailure("SUSPICIOUS WINDOW DETECTED: Heuristic scan detected a hack-like window running.");
         }` : ''}
         Sleep(3000); // Check every 3 seconds
     }` : ''}
@@ -1389,7 +1518,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     return TRUE;
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch, enableApiHookDetection, enableHeuristics, enableWatchdog]);
 
 
   const csharpCode = useMemo(() => {
@@ -1445,7 +1574,7 @@ ${enableProcessBinding ? `                // Enforce main.exe binding
                 Process currentProcess = Process.GetCurrentProcess();
                 if (!currentProcess.ProcessName.Equals("main", StringComparison.OrdinalIgnoreCase))
                 {
-                    EnforceBlock("UNAUTHORIZED PROCESS:\\nOnyx Guard must only be loaded via main.exe.");
+                    EnforceBlock("UNAUTHORIZED PROCESS: Onyx Guard must only be loaded via main.exe.");
                     return false;
                 }` : ''}
 
@@ -1454,7 +1583,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                 CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isRemote);
                 if (IsDebuggerPresent() || isRemote)
                 {
-                    EnforceBlock("DEBUGGER DETECTED:\\nPlease close all reverse-engineering tools.");
+                    EnforceBlock("DEBUGGER DETECTED: Please close all reverse-engineering tools.");
                     return false;
                 }` : ''}
 
@@ -1502,7 +1631,7 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
                                 {
                                     if (p.MainWindowTitle.Contains(bw) || p.ProcessName.Contains(bw))
                                     {
-                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED:\\nA blacklisted macro, auto-clicker, or memory editor was found.");
+                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
                                     }
                                 }
                             }
@@ -2492,6 +2621,33 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
+                        checked={enableApiHookDetection}
+                        onChange={(e) => setEnableApiHookDetection(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Detección de Hooks de API (Avanzado)' : 'API Hooking Detection (Advanced)'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableHeuristics}
+                        onChange={(e) => setEnableHeuristics(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Escaneo Heurístico (Ventanas sospechosas)' : 'Heuristic Scanning (Suspicious Windows)'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableWatchdog}
+                        onChange={(e) => setEnableWatchdog(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Thread Watchdog (Anti-Suspend)' : 'Thread Watchdog (Anti-Suspend)'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
                         checked={enableMemoryScanner}
                         onChange={(e) => setEnableMemoryScanner(e.target.checked)}
                         className="accent-amber-500"
@@ -2802,9 +2958,22 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                     <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4">
                       {/* File Add form */}
                       <form onSubmit={handleAddFile} className="border-t border-slate-800 pt-3 space-y-2.5 text-sm">
-                        <span className="font-bold text-slate-400 uppercase tracking-wider text-xs block font-mono">
-                          {language === 'es' ? 'Registrar Archivo de Juego:' : 'Register Client Asset File:'}
-                        </span>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-slate-400 uppercase tracking-wider text-xs block font-mono">
+                            {language === 'es' ? 'Registrar Archivo de Juego:' : 'Register Client Asset File:'}
+                          </span>
+                          
+                          <label className="text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 px-2 py-1 rounded cursor-pointer transition border border-amber-500/20 flex items-center gap-1 font-mono">
+                            <Upload className="w-3 h-3" />
+                            {isGeneratingMD5 ? (language === 'es' ? 'Calculando MD5...' : 'Calculating MD5...') : (language === 'es' ? 'Extraer desde Archivo' : 'Extract MD5 from File')}
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={handleGenerateMD5}
+                              disabled={isGeneratingMD5}
+                            />
+                          </label>
+                        </div>
                         
                         <div>
                           <input 
@@ -2863,6 +3032,9 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                   <div>
                     <h2 className="text-xl font-bold text-amber-100 font-serif uppercase tracking-wide flex items-center gap-2">
                       <Shield className="w-5 h-5 text-red-500" /> {t.dashboard.hackerDumps}
+                      <span className="ml-2 px-2 py-1 bg-amber-500/20 text-amber-400 text-[10px] rounded-full font-mono">
+                        {dumps.length} {language === 'es' ? 'hacks cargados' : 'loaded hacks'}
+                      </span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
                       {t.dashboard.hackerDumpsDesc}
@@ -2886,36 +3058,42 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                             const reader = new FileReader();
                             reader.onload = async (event) => {
                               const content = event.target?.result;
-                              if (typeof content === 'string') {
-                                const lines = content.split(/\r?\n/);
+                                                            if (typeof content === 'string') {
+                                const lines = content.split(/[\r\n]+/);
                                 const newDumps = [];
                                 const seenRules = new Set(dumps.map(d => d.rawRule));
+                                let parsedCount = 0;
+                                let skippedCount = 0;
                                 for (const line of lines) {
                                   const trimmed = line.trim();
-                                  if (trimmed && !trimmed.startsWith('//') && !seenRules.has(trimmed)) {
-                                    seenRules.add(trimmed); // prevent duplicates in the file itself
-                                    // Some files use spaces instead of tabs to align, we split by any whitespace if tab is not found, but it's safer to just take the last part for name.
-                                    const parts = trimmed.split(/[\t]+/).filter(Boolean);
-                                    let name = trimmed;
-                                    if (parts.length > 2) {
-                                      name = parts[parts.length - 1].replace(/"/g, '');
-                                    } else {
-                                      // try splitting by spaces
-                                      const spaceParts = trimmed.split(/[\s]+/).filter(Boolean);
-                                      if (spaceParts.length > 2) {
-                                          name = spaceParts[spaceParts.length - 1].replace(/"/g, '');
+                                  if (trimmed && !trimmed.startsWith('//')) {
+                                    if (!seenRules.has(trimmed)) {
+                                      seenRules.add(trimmed);
+                                      parsedCount++;
+                                      
+                                      const parts = trimmed.split(/[\t]+/).filter(Boolean);
+                                      let name = trimmed;
+                                      if (parts.length > 2) {
+                                        name = parts[parts.length - 1].replace(/"/g, '');
+                                      } else {
+                                        const spaceParts = trimmed.split(/[\s]+/).filter(Boolean);
+                                        if (spaceParts.length > 2) {
+                                            name = spaceParts[spaceParts.length - 1].replace(/"/g, '');
+                                        }
                                       }
+                                      
+                                      const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+                                      newDumps.push({
+                                        id,
+                                        projectId: activeProjectId,
+                                        name: name,
+                                        desc: 'Imported Signature',
+                                        rawRule: trimmed,
+                                        timestamp: new Date().toISOString()
+                                      });
+                                    } else {
+                                      skippedCount++;
                                     }
-                                    
-                                    const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-                                    newDumps.push({
-                                      id,
-                                      projectId: activeProjectId,
-                                      name: name,
-                                      desc: 'Imported Signature',
-                                      rawRule: trimmed,
-                                      timestamp: new Date().toISOString()
-                                    });
                                   }
                                 }
                                 
@@ -2932,7 +3110,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                                     });
                                     await batch.commit();
                                   }
-                                  alert(language === 'es' ? `Se subieron ${newDumps.length} firmas a la base de datos de OnyxGuard.` : `Uploaded ${newDumps.length} signatures to OnyxGuard DB.`);
+                                  alert(language === 'es' ? `Se subieron ${parsedCount} firmas a la base de datos de OnyxGuard. (${skippedCount} duplicados omitidos)` : `Uploaded ${parsedCount} signatures to OnyxGuard DB. (${skippedCount} duplicates skipped)`);
                                 } catch(e) {
                                   console.error(e);
                                   alert("Error uploading dumps to database.");
