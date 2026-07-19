@@ -136,6 +136,7 @@ export default function App() {
   const [enableProcessBinding, setEnableProcessBinding] = useState(true);
   const [enableApiHookDetection, setEnableApiHookDetection] = useState(true);
   const [enableHeuristics, setEnableHeuristics] = useState(true);
+  const [enableTestModeBlock, setEnableTestModeBlock] = useState(true);
   const [enableWatchdog, setEnableWatchdog] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
   const [blacklistedPrograms, setBlacklistedPrograms] = useState<string[]>(['Cheat Engine', 'AutoClicker', 'SpeedHack', 'WPE PRO', 'OllyDbg', 'Wireshark']);
@@ -201,6 +202,10 @@ export default function App() {
         if (data.enableMemoryScanner !== undefined) setEnableMemoryScanner(data.enableMemoryScanner);
         if (data.enableSplashScreen !== undefined) setEnableSplashScreen(data.enableSplashScreen);
         if (data.enableProcessBinding !== undefined) setEnableProcessBinding(data.enableProcessBinding);
+        if (data.enableApiHookDetection !== undefined) setEnableApiHookDetection(data.enableApiHookDetection);
+        if (data.enableHeuristics !== undefined) setEnableHeuristics(data.enableHeuristics);
+        if (data.enableTestModeBlock !== undefined) setEnableTestModeBlock(data.enableTestModeBlock);
+        if (data.enableWatchdog !== undefined) setEnableWatchdog(data.enableWatchdog);
         if (data.enablePayloadEncryption !== undefined) setEnablePayloadEncryption(data.enablePayloadEncryption);
         if (data.blacklistedPrograms !== undefined) setBlacklistedPrograms(data.blacklistedPrograms);
         if (data.licenseExpiration !== undefined) setLicenseExpiration(data.licenseExpiration);
@@ -233,12 +238,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableWatchdog, blacklistedPrograms, licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms, licenseExpiration
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableWatchdog, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -861,7 +866,9 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
             if (sTitle.find("google") == std::string::npos && 
                 sTitle.find("chrome") == std::string::npos && 
                 sTitle.find("firefox") == std::string::npos &&
-                sTitle.find("edge") == std::string::npos) {
+                sTitle.find("edge") == std::string::npos &&
+                sTitle.find("onyx") == std::string::npos &&
+                sTitle.find("explorer") == std::string::npos) {
                 
                 *((bool*)lParam) = true;
                 return FALSE;
@@ -894,27 +901,85 @@ std::string JsonEscape(const std::string& str) {
     return escaped;
 }
 
+#include <wincrypt.h>
+#pragma comment(lib, "Advapi32.lib")
+
 std::string CalculateFileMD5(const std::string& filePath) {
-    // In a real DLL, you would open the file using CreateFile() or ifstream, 
-    // and pass the bytes to Windows CryptoAPI (CryptHashData)
-    // For demo/simplicity, this acts as the signature lookup
-    if (filePath == "main.exe") return "${clientFiles.find(f => f.path === 'main.exe')?.expectedHash || 'c4ca4238a0b923820dcc509a6f75849b'}";
-    if (filePath.find("item_eng.bmd") != std::string::npos) return "${clientFiles.find(f => f.path.includes('item_eng.bmd'))?.expectedHash || 'a87ff679a2f3e71d9181a67b7542122c'}";
-    return "unverified_file_hash_signature";
+    std::string md5Hash = "";
+    HANDLE hFile = CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return "file_not_found";
+    }
+
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    if (CryptAcquireContextA(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        if (CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash)) {
+            BYTE rgbFile[4096];
+            DWORD cbRead = 0;
+            bool success = true;
+            while (ReadFile(hFile, rgbFile, sizeof(rgbFile), &cbRead, NULL)) {
+                if (cbRead == 0) break;
+                if (!CryptHashData(hHash, rgbFile, cbRead, 0)) {
+                    success = false;
+                    break;
+                }
+            }
+            if (success) {
+                BYTE rgbHash[16];
+                DWORD cbHash = 16;
+                if (CryptGetHashParam(hHash, HP_HASHVAL, rgbHash, &cbHash, 0)) {
+                    char hex[33];
+                    for (DWORD i = 0; i < cbHash; i++) {
+                        sprintf_s(hex + (i * 2), 3, "%02x", rgbHash[i]);
+                    }
+                    md5Hash = hex;
+                }
+            }
+            CryptDestroyHash(hHash);
+        }
+        CryptReleaseContext(hProv, 0);
+    }
+    CloseHandle(hFile);
+    return md5Hash.empty() ? "hash_error" : md5Hash;
 }
 
 // Global tray icon data so we can update it from other threads
 NOTIFYICONDATAA g_nid = { 0 };
 bool g_trayIconAdded = false;
 std::string g_startupMessage = "";
+HWND g_trayHwnd = NULL;
+
+${enableTestModeBlock ? `// Windows Test Mode Detection
+bool IsTestModeEnabled() {
+    HKEY hKey;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\\\CurrentControlSet\\\\Control", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        char value[256];
+        DWORD size = sizeof(value);
+        if (RegQueryValueExA(hKey, "SystemStartOptions", NULL, NULL, (LPBYTE)value, &size) == ERROR_SUCCESS) {
+            std::string startOptions(value);
+            for(size_t i=0; i<startOptions.length(); ++i) startOptions[i] = toupper(startOptions[i]);
+            if (startOptions.find("TESTSIGNING") != std::string::npos) {
+                RegCloseKey(hKey);
+                return true;
+            }
+        }
+        RegCloseKey(hKey);
+    }
+    return false;
+}` : ''}
 
 // Perform validation request to backend web server
 bool PerformHandshake(const std::string& username, const std::string& hwid, const std::string& modifiedFile) {
     HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
-        MessageBoxA(NULL, "InternetOpenA failed.", "Onyx Debug", MB_OK);
         return false;
     }
+
+    DWORD timeout = 5000; // 5 seconds timeout to prevent false positive hangs
+    InternetSetOptionA(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
 
     // Parse URL host and path
     std::string host = "127.0.0.1";
@@ -942,23 +1007,6 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
         flags |= INTERNET_FLAG_SECURE;
     }
 
-    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-    if (!hConnect) {
-        std::string err = "InternetConnectA failed. Host: " + host + " Port: " + std::to_string(port) + " Error: " + std::to_string(GetLastError());
-        MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
-        InternetCloseHandle(hInternet);
-        return false;
-    }
-
-    HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
-    if (!hRequest) {
-        std::string err = "HttpOpenRequestA failed. Path: " + path + " Error: " + std::to_string(GetLastError());
-        MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
-        InternetCloseHandle(hConnect);
-        InternetCloseHandle(hInternet);
-        return false;
-    }
-
     // Build Payload JSON body
     std::stringstream json;
     json << "{"
@@ -970,49 +1018,74 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
          << "}";
     
     std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\\r\\n";
+    std::string headers = "Content-Type: application/json\\\\r\\\\n";
 
 ${enablePayloadEncryption ? `    // Encrypting Payload before sending
     payload = EncryptPayload(payload);
     // Add custom header to indicate encrypted payload
-    headers += "X-Payload-Encrypted: true\\r\\n";
+    headers += "X-Payload-Encrypted: true\\\\r\\\\n";
 ` : ''}
 
-    BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
-    
     bool isAuthorized = false;
-    if (result) {
-        char buffer[1024];
-        DWORD bytesRead = 0;
-        std::string responseString = "";
-        while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
-            buffer[bytesRead] = '\\0';
-            responseString += buffer;
+    int maxRetries = 3;
+    
+    for (int retry = 0; retry < maxRetries; retry++) {
+        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (!hConnect) {
+            Sleep(1000);
+            continue;
+        }
+
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
+        if (!hRequest) {
+            InternetCloseHandle(hConnect);
+            Sleep(1000);
+            continue;
+        }
+
+        BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
+        
+        if (result) {
+            char buffer[1024];
+            DWORD bytesRead = 0;
+            std::string responseString = "";
+            while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+                buffer[bytesRead] = '\\0';
+                responseString += buffer;
+            }
+            
+            // Simple JSON response check
+            if (responseString.find("\\"success\\":true") != std::string::npos || responseString.find("\\"success\\": true") != std::string::npos) {
+                isAuthorized = true;
+                size_t msgStart = responseString.find("\\\"message\\\":\\\"");
+                if (msgStart != std::string::npos) {
+                    msgStart += 11;
+                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    if (msgEnd != std::string::npos) {
+                        std::string msg = responseString.substr(msgStart, msgEnd - msgStart);
+                        g_startupMessage = msg;
+                    }
+                }
+                InternetCloseHandle(hRequest);
+                InternetCloseHandle(hConnect);
+                break; // Success, break out of retry loop
+            } else if (responseString.find("\\"action\\":") != std::string::npos) {
+                // If it successfully reached server and server explicitly rejected, do not retry
+                isAuthorized = false;
+                InternetCloseHandle(hRequest);
+                InternetCloseHandle(hConnect);
+                break; 
+            }
         }
         
-        // Simple JSON response check
-        if (responseString.find("\\"success\\":true") != std::string::npos || responseString.find("\\"success\\": true") != std::string::npos) {
-            isAuthorized = true;
-            size_t msgStart = responseString.find("\\\"message\\\":\\\"");
-            if (msgStart != std::string::npos) {
-                msgStart += 11;
-                size_t msgEnd = responseString.find("\\\"", msgStart);
-                if (msgEnd != std::string::npos) {
-                    std::string msg = responseString.substr(msgStart, msgEnd - msgStart);
-                    g_startupMessage = msg;
-                }
-            }
-        } else {
-            std::string err = "Server rejected auth. Response: " + responseString;
-            MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
+        // If we reach here, it was a network error or malformed response
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        if (retry < maxRetries - 1) {
+            Sleep(2000); // Wait 2s before retrying
         }
-    } else {
-        std::string err = "HttpSendRequestA failed. Error: " + std::to_string(GetLastError());
-        MessageBoxA(NULL, err.c_str(), "Onyx Debug", MB_OK);
     }
 
-    InternetCloseHandle(hRequest);
-    InternetCloseHandle(hConnect);
     InternetCloseHandle(hInternet);
     return isAuthorized;
 }
@@ -1022,9 +1095,16 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
 
 // Action taken if security check fails
 void HandleFailure(const std::string& message) {
-    // Hide game window immediately so they can't keep playing
-    HWND hwnd = GetForegroundWindow();
-    if (hwnd) ShowWindow(hwnd, SW_HIDE);
+    // Hide and disable all windows belonging to this process so they can't keep playing
+    EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == GetCurrentProcessId()) {
+            ShowWindow(hwnd, SW_HIDE);
+            EnableWindow(hwnd, FALSE);
+        }
+        return TRUE;
+    }, 0);
 
 ${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? `    if (g_trayIconAdded) {
         g_nid.uFlags = NIF_INFO;
@@ -1093,6 +1173,13 @@ LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
             MessageBoxA(hwnd, "Onyx Guard Anti-Hack is running and protecting the game process.", "Onyx Guard", MB_OK | MB_ICONINFORMATION);
         }
+    } else if (msg == WM_USER + 2) {
+        g_nid.uFlags = NIF_INFO;
+        strcpy_s(g_nid.szInfo, g_startupMessage.c_str());
+        strcpy_s(g_nid.szInfoTitle, "Onyx Guard");
+        g_nid.dwInfoFlags = NIIF_INFO;
+        Shell_NotifyIconA(NIM_MODIFY, &g_nid);
+
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
@@ -1116,17 +1203,7 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
 
     Shell_NotifyIconA(NIM_ADD, &g_nid);
     g_trayIconAdded = true;
-
-    if (!g_startupMessage.empty()) {
-        g_nid.uFlags = NIF_INFO;
-        strcpy_s(g_nid.szInfo, g_startupMessage.c_str());
-        strcpy_s(g_nid.szInfoTitle, "Onyx Guard");
-        g_nid.dwInfoFlags = NIIF_INFO;
-        Shell_NotifyIconA(NIM_MODIFY, &g_nid);
-        
-        // Ensure user sees it with a message box
-        MessageBoxA(NULL, g_startupMessage.c_str(), "Onyx Guard - Welcome", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
-    }
+    g_trayHwnd = hwnd;
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -1302,9 +1379,34 @@ DWORD WINAPI DirectoryMonitorThread(LPVOID lpParam) {
             NULL,
             NULL
         )) {
-            // If any critical file was modified while the game is running, terminate it.
-            // For simplicity, we trigger on any modification in this example.
-            HandleFailure("REAL-TIME INTEGRITY VIOLATION: Game files were modified while running.");
+            FILE_NOTIFY_INFORMATION* pNotify = (FILE_NOTIFY_INFORMATION*)buffer;
+            char filename[MAX_PATH];
+            WideCharToMultiByte(CP_ACP, 0, pNotify->FileName, pNotify->FileNameLength / 2, filename, MAX_PATH, NULL, NULL);
+            filename[pNotify->FileNameLength / 2] = '\\0';
+            
+            std::string fileStr = filename;
+            for(size_t i = 0; i < fileStr.length(); ++i) {
+                if (fileStr[i] == '/') fileStr[i] = '\\\\';
+                fileStr[i] = tolower(fileStr[i]);
+            }
+            
+            bool isCritical = false;
+            for (int i = 0; i < sizeof(CRITICAL_FILES) / sizeof(CRITICAL_FILES[0]); i++) {
+                std::string critFile = CRITICAL_FILES[i].filePath;
+                if (critFile.empty()) continue;
+                for(size_t j = 0; j < critFile.length(); ++j) {
+                    if (critFile[j] == '/') critFile[j] = '\\\\';
+                    critFile[j] = tolower(critFile[j]);
+                }
+                if (fileStr == critFile) {
+                    isCritical = true;
+                    break;
+                }
+            }
+            
+            if (isCritical) {
+                HandleFailure("REAL-TIME INTEGRITY VIOLATION: Game files were modified while running.");
+            }
         }
     }
     CloseHandle(hDir);
@@ -1434,6 +1536,11 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
         return 1;
     }` : ''}
 
+${enableTestModeBlock ? `    // Test Mode Check
+    if (IsTestModeEnabled()) {
+        HandleFailure("SECURITY BREACH: Windows is running in Test Mode (Testsigning). Please disable it to play.");
+        return 1;
+    }` : ''}
     std::string hwid = GetHardwareID();
     
     ${enableFileCheck ? `// Verify file hashes
@@ -1458,11 +1565,27 @@ ${enableAntiDebug ? `    // 2. Continuous Anti-Debugging Check
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
     if (!status) {
-        HandleFailure("CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized.");
+        std::string err = g_startupMessage.empty() ? "CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized." : g_startupMessage;
+        HandleFailure(err);
+        return 1;
+    }
+    
+    // Set default message if empty (e.g. server down or not providing message)
+    if (g_startupMessage.empty()) {
+        g_startupMessage = "Welcome to Onyx Guard!";
+    }
+    
+    if (g_trayHwnd) {
+        PostMessageA(g_trayHwnd, WM_USER + 2, 0, 0);
     }
     
     ${enableAntiMacro ? `// Start continuous macro checking loop
+    int tickCount = 0;
     while(true) {
+        if (tickCount % 10 == 0) { // Every 30 seconds (10 * 3s)
+            FetchDynamicLists();
+        }
+        tickCount++;
         if(ScanForBlacklistedWindows()) {
             HandleFailure("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
         }
@@ -1497,13 +1620,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         ${enableMultiClientBlock ? (multiClientLimit > 1 ? `HANDLE hSemaphore = CreateSemaphoreA(NULL, ${multiClientLimit}, ${multiClientLimit}, "Global\\\\MuOnlineSecureSemaphore");
         if (hSemaphore != NULL) {
             if (WaitForSingleObject(hSemaphore, 0) == WAIT_TIMEOUT) {
-                MessageBoxA(NULL, "Maximum allowed clients reached on this PC!", "OnyxGuard", MB_OK | MB_ICONWARNING);
-                ExitProcess(0);
+                HandleFailure("MULTI-CLIENT DETECTED: Maximum allowed clients reached on this PC!");
+                return FALSE;
             }
         }` : `CreateMutexA(NULL, TRUE, "Global\\\\MuOnlineSecureMutexUniqueKey");
         if (GetLastError() == ERROR_ALREADY_EXISTS) {
-            MessageBoxA(NULL, "Multi-Client is disabled on this server!", "OnyxGuard", MB_OK | MB_ICONWARNING);
-            ExitProcess(0);
+            HandleFailure("MULTI-CLIENT DETECTED: Multi-Client is disabled on this server!");
+            return FALSE;
         }`) : '// Multi-client checks disabled'}
 
         // Start safety background thread
@@ -1518,7 +1641,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     return TRUE;
 }
 `;
-  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch, enableApiHookDetection, enableHeuristics, enableWatchdog]);
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, usePch, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog]);
 
 
   const csharpCode = useMemo(() => {
@@ -1687,47 +1810,74 @@ ${enableAntiDebug ? `                // Anti-Debugger Check
 
         private static bool SendValidationHandshake(string user, string hwid, string modFile)
         {
-            var request = (HttpWebRequest)WebRequest.Create(API_URL);
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            request.Timeout = 5000;
-
             string jsonPayload = string.Format(
-                "{{\\"username\\":\\"{0}\\",\\"hwid\\":\\"{1}\\",\\"clientVersion\\":\\"{2}\\",\\"secretToken\\":\\"{3}\\",\\"fileModified\\":\\"{4}\\"}}",
+                "{{\\\"username\\\":\\\"{0}\\\",\\\"hwid\\\":\\\"{1}\\\",\\\"clientVersion\\\":\\\"{2}\\\",\\\"secretToken\\\":\\\"{3}\\\",\\\"fileModified\\\":\\\"{4}\\\"}}",
                 user, hwid, REQ_VERSION, SECRET_TOKEN, modFile
             );
 
-${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayload);
-            request.Headers.Add("X-Payload-Encrypted", "true");
-` : ''}
+${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayload);` : ''}
             byte[] byteArray = Encoding.UTF8.GetBytes(jsonPayload);
-            request.ContentLength = byteArray.Length;
 
-            using (Stream dataStream = request.GetRequestStream())
+            int maxRetries = 3;
+            for (int retry = 0; retry < maxRetries; retry++)
             {
-                dataStream.Write(byteArray, 0, byteArray.Length);
-            }
-
-            try
-            {
-                using (var response = (HttpWebResponse)request.GetResponse())
+                try
                 {
+                    var request = (HttpWebRequest)WebRequest.Create(API_URL);
+                    request.Method = "POST";
+                    request.ContentType = "application/json";
+                    request.Timeout = 5000;
+${enablePayloadEncryption ? `                    request.Headers.Add("X-Payload-Encrypted", "true");` : ''}
+                    request.ContentLength = byteArray.Length;
+
+                    using (Stream dataStream = request.GetRequestStream())
+                    {
+                        dataStream.Write(byteArray, 0, byteArray.Length);
+                    }
+
+                    using (var response = (HttpWebResponse)request.GetResponse())
                     using (var reader = new StreamReader(response.GetResponseStream()))
                     {
                         string responseText = reader.ReadToEnd();
-                        return responseText.Contains("\\"success\\":true");
+                        if (responseText.Contains("\"action\":\"CONTINUE\"") || responseText.Contains("\"action\": \"CONTINUE\"") || responseText.Contains("\"success\":true"))
+                            return true;
+                        
+                        if (responseText.Contains("\"action\":\"EXIT\"") || responseText.Contains("\"action\": \"EXIT\"") || responseText.Contains("\"success\":false"))
+                        {
+                            int msgStart = responseText.IndexOf("\"message\":\"");
+                            if (msgStart != -1) {
+                                msgStart += 11;
+                                int msgEnd = responseText.IndexOf("\"", msgStart);
+                                if (msgEnd != -1) {
+                                    g_startupMessage = responseText.Substring(msgStart, msgEnd - msgStart);
+                                }
+                            }
+                            return false; // Explicit rejection from server
+                        }
                     }
                 }
+                catch
+                {
+                    if (retry == maxRetries - 1) return false;
+                    System.Threading.Thread.Sleep(2000);
+                }
             }
-            catch
-            {
-                return false;
-            }
+            return false;
         }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         private static void EnforceBlock(string errorMsg)
         {
-            ${actionOnFailure === 'EXIT' ? '            Process.GetCurrentProcess().Kill();' : (actionOnFailure === 'MSG_BOX' ? '            MessageBox.Show(errorMsg, "Onyx Guard", MessageBoxButtons.OK, MessageBoxIcon.Error);\n            Process.GetCurrentProcess().Kill();' : '            Process.GetCurrentProcess().Kill();')}
+            try {
+                Process p = Process.GetCurrentProcess();
+                if (p.MainWindowHandle != IntPtr.Zero) {
+                    ShowWindow(p.MainWindowHandle, 0);
+                }
+            } catch {}
+            
+            ${actionOnFailure === 'EXIT' ? '            Process.GetCurrentProcess().Kill();' : (actionOnFailure === 'MSG_BOX' ? '            // En C# usamos solo Kill sin popup si se quiere tray (requeriría wrapper)\n            Process.GetCurrentProcess().Kill();' : '            Process.GetCurrentProcess().Kill();')}
         }
     }
 }
@@ -2443,7 +2593,7 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                         {language === 'es' ? 'Salir del juego de inmediato (ExitProcess)' : 'Terminate client instantly (ExitProcess)'}
                       </option>
                       <option value="MSG_BOX">
-                        {language === 'es' ? 'Mostrar cuadro de alerta + ExitProcess' : 'MessageBox alert + ExitProcess'}
+                        {language === 'es' ? 'Notificación en reloj (Tray) + ExitProcess' : 'Tray Notification + ExitProcess'}
                       </option>
                       <option value="CRASH">
                         {language === 'es' ? 'Forzar cierre deliberado (Anti-Dumping)' : 'Force deliberate crash (Anti-Dumping)'}
@@ -2635,6 +2785,15 @@ ${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayloa
                         className="accent-amber-500"
                       />
                       <span>{language === 'es' ? 'Escaneo Heurístico (Ventanas sospechosas)' : 'Heuristic Scanning (Suspicious Windows)'}</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={enableTestModeBlock}
+                        onChange={(e) => setEnableTestModeBlock(e.target.checked)}
+                        className="accent-amber-500"
+                      />
+                      <span>{language === 'es' ? 'Bloquear Windows Test Mode (Modo de Prueba)' : 'Block Windows Test Mode (Testsigning)'}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 

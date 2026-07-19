@@ -1,8 +1,8 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-const m = code.match(/const cppCode = useMemo\(\(\) => \{[\s\S]*?return `([\s\S]*?)`;\n  \}, \[serverUrl/);
-const cppBody = m[1];
+const m = code.match(/return `\/\/ ============================================================================\n\/\/  ONYX GUARD ANTI-HACK([\s\S]*?)`;\n  }, \[serverUrl/);
+const cppBody = '// ============================================================================\n//  ONYX GUARD ANTI-HACK' + m[1];
 
 const securityToken = "TEST_TOKEN";
 const clientVersion = "1.04d";
@@ -23,6 +23,10 @@ const enableMultiClientBlock = true;
 const enableSplashScreen = true;
 const usePch = true;
 const multiClientLimit = 3;
+const clientFiles = [];
+const enablePayloadEncryption = true;
+const activeProjectId = '123';
+const serverUrl = 'http://localhost';
 
 const evalStr = '\`' + cppBody + '\`';
 const generatedCpp = eval(evalStr);

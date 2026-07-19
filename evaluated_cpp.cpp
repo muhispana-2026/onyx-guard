@@ -1,0 +1,884 @@
+    { 0, 0x0, {0}, 0, "" }`;
+          
+          const p = [];
+          const regex = /"([^"]+)"|(\S+)/g;
+          let m;
+          while ((m = regex.exec(d.rawRule)) !== null) {
+              if (m[1]) p.push(m[1]);
+              else if (m[2]) p.push(m[2]);
+          }
+          
+          if (p.length < 4) return `    { 0, 0x0, {0}, 0, "" }`;
+          
+          const type = p[0];
+          let addrHex = p[1].replace(/0x/i, '').trim();
+          if (!/^[0-9a-fA-F]+$/.test(addrHex)) addrHex = '0';
+          const addr = '0x' + addrHex;
+          
+          const bytes = p.slice(2, -1).map(b => {
+              let tb = b.replace(/0x/i, '').trim();
+              if (!/^[0-9a-fA-F]{1,2}$/.test(tb)) return '0x00';
+              return '0x' + tb;
+          }).join(', ');
+          
+          const name = p[p.length - 1].replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
+          return `    { , , {  }, , "" }`;
+      }).join(',\n')
+      : `    { 0, 0x0, {0}, 0, "Dummy" }`;
+
+    return `// ============================================================================
+//  ONYX GUARD ANTI-HACK & CLIENT INTEGRITY PLUGIN
+//  Target Game Client: Season 6 (main.exe v)
+//  File: Custom.cpp (DLL Project Source Code)
+//  Compiled using: Visual Studio 2019/2022 (MSVC Toolset)
+// ============================================================================
+
+#include <windows.h>
+#include <stdint.h>
+#include <objbase.h>
+#include <wininet.h>
+#include <shellapi.h>
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <vector>
+#include <cctype>
+#include <iomanip>
+
+#pragma comment(lib, "wininet.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "ole32.lib")
+
+// --- PLUGIN CONFIGURATION ---
+const std::string AUTH_SERVER_URL = "";
+const std::string SECRET_TOKEN    = "";
+const std::string CLIENT_VERSION  = "";
+
+// Struct representing file metadata to verify
+struct ClientFile {
+    const char* filePath;
+    const char* expectedHash;
+};
+
+// Registered hashes from server settings
+ClientFile CRITICAL_FILES[] = {
+{ "main.exe", "dummy" }
+};
+
+std::vector<std::string> DYNAMIC_WINDOWS;
+struct DynamicSignature {
+    DWORD address;
+    std::vector<BYTE> signature;
+    std::string name;
+};
+std::vector<DynamicSignature> DYNAMIC_DUMPS;
+
+"Cheat Engine"
+};
+
+bool ScanForBlacklistedWindows() {
+    for (size_t i = 0; i < DYNAMIC_WINDOWS.size(); i++) {
+        std::string win = DYNAMIC_WINDOWS[i];
+        if (FindWindowA(NULL, win.c_str()) != NULL) return true;
+    }
+    for (int i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
+        if (std::string(BLACKLISTED_WINDOWS[i]) == "DummyWindowName") continue;
+        if (FindWindowA(NULL, BLACKLISTED_WINDOWS[i]) != NULL) {
+            return true;
+        }
+    }
+    return false;
+}` : ''}
+
+// Simple Hardware ID generator using MAC Address & System Information
+std::string GetHardwareID() {
+    char compName[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+    DWORD compNameLen = MAX_COMPUTERNAME_LENGTH + 1;
+    if (!GetComputerNameA(compName, &compNameLen)) {
+        lstrcpyA(compName, "UNKNOWN_PC");
+    }
+    
+    DWORD volSerial = 0;
+    GetVolumeInformationA("C:\\\\", NULL, 0, &volSerial, NULL, NULL, NULL, 0);
+    
+    char hwidBuffer[256];
+    wsprintfA(hwidBuffer, "HWID-%s-%08X", compName, volSerial);
+    return std::string(hwidBuffer);
+}
+
+
+            }
+        }
+    }
+    return false;
+}` : ''}
+
+;
+
+MemorySignature MEMORY_SIGNATURES[] = {
+{0, 0, {0}, 0, "Dummy"}
+};
+
+bool ScanMemorySignatures() {
+    HANDLE hProcess = GetCurrentProcess();
+    for (size_t i = 0; i < DYNAMIC_DUMPS.size(); i++) {
+        DynamicSignature sig = DYNAMIC_DUMPS[i];
+        BYTE buffer[128];
+        SIZE_T bytesRead;
+        if (ReadProcessMemory(hProcess, (LPCVOID)(uintptr_t)sig.address, buffer, sig.signature.size(), &bytesRead)) {
+            bool match = true;
+            for (size_t j = 0; j < sig.signature.size() && j < bytesRead; j++) {
+                if (buffer[j] != sig.signature[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+    }
+
+    for (int i = 0; i < sizeof(MEMORY_SIGNATURES) / sizeof(MEMORY_SIGNATURES[0]); i++) {
+        if (std::string(MEMORY_SIGNATURES[i].name) == "Dummy") continue;
+        
+        BYTE buffer[128];
+        SIZE_T bytesRead;
+        
+        // Scan specific memory address
+        if (ReadProcessMemory(hProcess, (LPCVOID)(uintptr_t)MEMORY_SIGNATURES[i].address, buffer, MEMORY_SIGNATURES[i].sigLength, &bytesRead)) {
+            bool match = true;
+            for (int j = 0; j < MEMORY_SIGNATURES[i].sigLength; j++) {
+                if (buffer[j] != MEMORY_SIGNATURES[i].signature[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return true;
+        }
+    }
+    return false;
+}` : ''}
+
+` : ''}
+
+
+    return true;
+}` : ''}
+
+    // Encrypting Payload before sending
+    payload = EncryptPayload(payload);
+    // Add custom header to indicate encrypted payload
+    headers += "X-Payload-Encrypted: true\\r\\n";
+";
+    std::string encrypted = data;
+    // Basic XOR for data obfuscation
+    for(size_t i = 0; i < data.size(); i++) {
+        encrypted[i] = data[i] ^ key[i % key.size()];
+    }
+    // Return Hex/Base64 representation in reality
+    return encrypted; 
+}` : ''}
+
+
+
+    return false;
+}
+
+bool ScanForApiHooks() {
+    if (CheckApiHook("ws2_32.dll", "send") || 
+        CheckApiHook("ws2_32.dll", "recv") ||
+        CheckApiHook("kernel32.dll", "WriteProcessMemory") || 
+        CheckApiHook("kernel32.dll", "ReadProcessMemory")) {
+        return true;
+    }
+    return false;
+}` : ''}
+
+
+        }
+    }
+    return TRUE;
+}
+
+bool ScanHeuristicWindows() {
+    bool found = false;
+    EnumWindows(EnumWindowsProc, (LPARAM)&found);
+    return found;
+}` : ''}
+
+// Simple MD5 file hashing (placeholder for actual cryptographic implementation)
+std::string JsonEscape(const std::string& str) {
+    std::string escaped;
+    for (size_t i = 0; i < str.length(); ++i) {
+        char c = str[i];
+        if (c == '"') escaped += "\\\\\\\"";
+        else if (c == '\\\\') escaped += "\\\\\\\\\\\\\\\\";
+        else if (c == '\\b') escaped += "\\\\\\\\b";
+        else if (c == '\\f') escaped += "\\\\\\\\f";
+        else if (c == '\\n') escaped += "\\\\\\\\n";
+        else if (c == '\\r') escaped += "\\\\\\\\r";
+        else if (c == '\\t') escaped += "\\\\\\\\t";
+        else escaped += c;
+    }
+    return escaped;
+}
+
+#include <wincrypt.h>
+#pragma comment(lib, "Advapi32.lib")
+
+std::string CalculateFileMD5(const std::string& filePath) {
+    std::string md5Hash = "";
+    HANDLE hFile = CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return "file_not_found";
+    }
+
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    if (CryptAcquireContextA(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        if (CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash)) {
+            BYTE rgbFile[4096];
+            DWORD cbRead = 0;
+            bool success = true;
+            while (ReadFile(hFile, rgbFile, sizeof(rgbFile), &cbRead, NULL)) {
+                if (cbRead == 0) break;
+                if (!CryptHashData(hHash, rgbFile, cbRead, 0)) {
+                    success = false;
+                    break;
+                }
+            }
+            if (success) {
+                BYTE rgbHash[16];
+                DWORD cbHash = 16;
+                if (CryptGetHashParam(hHash, HP_HASHVAL, rgbHash, &cbHash, 0)) {
+                    char hex[33];
+                    for (DWORD i = 0; i < cbHash; i++) {
+                        sprintf_s(hex + (i * 2), 3, "%02x", rgbHash[i]);
+                    }
+                    md5Hash = hex;
+                }
+            }
+            CryptDestroyHash(hHash);
+        }
+        CryptReleaseContext(hProv, 0);
+    }
+    CloseHandle(hFile);
+    return md5Hash.empty() ? "hash_error" : md5Hash;
+}
+
+// Global tray icon data so we can update it from other threads
+NOTIFYICONDATAA g_nid = { 0 };
+bool g_trayIconAdded = false;
+std::string g_startupMessage = "";
+HWND g_trayHwnd = NULL;
+
+// Test Mode Check
+    if (IsTestModeEnabled()) {
+        HandleFailure("SECURITY BREACH: Windows is running in Test Mode (Testsigning). Please disable it to play.");
+        return 1;
+    }
+        }
+        RegCloseKey(hKey);
+    }
+    return false;
+}` : ''}
+
+// Perform validation request to backend web server
+bool PerformHandshake(const std::string& username, const std::string& hwid, const std::string& modifiedFile) {
+    HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        return false;
+    }
+
+    DWORD timeout = 5000; // 5 seconds timeout to prevent false positive hangs
+    InternetSetOptionA(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
+
+    // Parse URL host and path
+    std::string host = "127.0.0.1";
+    std::string path = "/api/auth";
+    size_t protocolPos = AUTH_SERVER_URL.find("://");
+    std::string urlWithoutProtocol = (protocolPos == std::string::npos) ? AUTH_SERVER_URL : AUTH_SERVER_URL.substr(protocolPos + 3);
+    size_t slashPos = urlWithoutProtocol.find("/");
+    if (slashPos != std::string::npos) {
+        host = urlWithoutProtocol.substr(0, slashPos);
+        std::string basePath = urlWithoutProtocol.substr(slashPos);
+        if (basePath.back() == '/') basePath.pop_back();
+        if (basePath.length() >= 9 && basePath.substr(basePath.length() - 9) == "/api/auth") {
+            path = basePath;
+        } else {
+            path = basePath + "/api/auth";
+        }
+    } else {
+        host = urlWithoutProtocol;
+    }
+
+    INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
+    DWORD flags = INTERNET_FLAG_RELOAD;
+    if (AUTH_SERVER_URL.find("https://") == 0) {
+        port = INTERNET_DEFAULT_HTTPS_PORT;
+        flags |= INTERNET_FLAG_SECURE;
+    }
+
+    // Build Payload JSON body
+    std::stringstream json;
+    json << "{"
+         << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
+         << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
+         << "\\\"clientVersion\\\": \\\"" << JsonEscape(CLIENT_VERSION) << "\\\","
+         << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\","
+         << "\\\"fileModified\\\": \\\"" << (modifiedFile.empty() ? "none" : JsonEscape(modifiedFile)) << "\\\""
+         << "}";
+    
+    std::string payload = json.str();
+    std::string headers = "Content-Type: application/json\r\n";
+
+    // Encrypting Payload before sending
+    payload = EncryptPayload(payload);
+    // Add custom header to indicate encrypted payload
+    headers += "X-Payload-Encrypted: true\\r\\n";
+
+
+    bool isAuthorized = false;
+    int maxRetries = 3;
+    
+    for (int retry = 0; retry < maxRetries; retry++) {
+        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (!hConnect) {
+            Sleep(1000);
+            continue;
+        }
+
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
+        if (!hRequest) {
+            InternetCloseHandle(hConnect);
+            Sleep(1000);
+            continue;
+        }
+
+        BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
+        
+        if (result) {
+            char buffer[1024];
+            DWORD bytesRead = 0;
+            std::string responseString = "";
+            while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+                buffer[bytesRead] = '\\0';
+                responseString += buffer;
+            }
+            
+            // Simple JSON response check
+            if (responseString.find("\\"success\\":true") != std::string::npos || responseString.find("\\"success\\": true") != std::string::npos) {
+                isAuthorized = true;
+                size_t msgStart = responseString.find("\\\"message\\\":\\\"");
+                if (msgStart != std::string::npos) {
+                    msgStart += 11;
+                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    if (msgEnd != std::string::npos) {
+                        std::string msg = responseString.substr(msgStart, msgEnd - msgStart);
+                        g_startupMessage = msg;
+                    }
+                }
+                InternetCloseHandle(hRequest);
+                InternetCloseHandle(hConnect);
+                break; // Success, break out of retry loop
+            } else if (responseString.find("\\"action\\":") != std::string::npos) {
+                // If it successfully reached server and server explicitly rejected, do not retry
+                isAuthorized = false;
+                InternetCloseHandle(hRequest);
+                InternetCloseHandle(hConnect);
+                break; 
+            }
+        }
+        
+        // If we reach here, it was a network error or malformed response
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        if (retry < maxRetries - 1) {
+            Sleep(2000); // Wait 2s before retrying
+        }
+    }
+
+    InternetCloseHandle(hInternet);
+    return isAuthorized;
+}
+
+
+
+
+// Action taken if security check fails
+void HandleFailure(const std::string& message) {
+    // Hide and disable all windows belonging to this process so they can't keep playing
+    EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == GetCurrentProcessId()) {
+            ShowWindow(hwnd, SW_HIDE);
+            EnableWindow(hwnd, FALSE);
+        }
+        return TRUE;
+    }, 0);
+
+Process.GetCurrentProcess().Kill();
+    ExitProcess(0);` : '    int* p = NULL;\n    *p = 0xDEADBEEF;')}
+}
+
+
+HICON CreateOnyxLogoIcon() {
+    int size = 32;
+    HDC hScreenDC = GetDC(NULL);
+    HDC hMemDC = CreateCompatibleDC(hScreenDC);
+    HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, size, size);
+    HBITMAP hMask = CreateCompatibleBitmap(hScreenDC, size, size);
+
+    SelectObject(hMemDC, hMask);
+    HBRUSH whiteBrush = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH blackBrush = CreateSolidBrush(RGB(0, 0, 0));
+    RECT r = {0, 0, size, size};
+    FillRect(hMemDC, &r, whiteBrush);
+    
+    POINT pts[4] = { {size/2, 2}, {size-2, size/2}, {size/2, size-2}, {2, size/2} };
+    SelectObject(hMemDC, GetStockObject(NULL_PEN));
+    SelectObject(hMemDC, blackBrush);
+    Polygon(hMemDC, pts, 4);
+
+    SelectObject(hMemDC, hBitmap);
+    FillRect(hMemDC, &r, blackBrush);
+    
+    HBRUSH tealBrush = CreateSolidBrush(RGB(45, 212, 191));
+    SelectObject(hMemDC, tealBrush);
+    Polygon(hMemDC, pts, 4);
+    
+    POINT pts2[4] = { {size/2, 8}, {size-8, size/2}, {size/2, size-8}, {8, size/2} };
+    HBRUSH darkBrush = CreateSolidBrush(RGB(15, 20, 25));
+    SelectObject(hMemDC, darkBrush);
+    Polygon(hMemDC, pts2, 4);
+
+    DeleteObject(whiteBrush);
+    DeleteObject(blackBrush);
+    DeleteObject(tealBrush);
+    DeleteObject(darkBrush);
+
+    ICONINFO ii = {0};
+    ii.fIcon = TRUE;
+    ii.hbmMask = hMask;
+    ii.hbmColor = hBitmap;
+    HICON hIcon = CreateIconIndirect(&ii);
+
+    DeleteObject(hBitmap);
+    DeleteObject(hMask);
+    DeleteDC(hMemDC);
+    ReleaseDC(NULL, hScreenDC);
+
+    return hIcon;
+}
+
+// System Tray Icon Routine
+LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_USER + 1) {
+        if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
+            MessageBoxA(hwnd, "Onyx Guard Anti-Hack is running and protecting the game process.", "Onyx Guard", MB_OK | MB_ICONINFORMATION);
+        }
+    } else if (msg == WM_USER + 2) {
+        g_nid.uFlags = NIF_INFO;
+        strcpy_s(g_nid.szInfo, g_startupMessage.c_str());
+        strcpy_s(g_nid.szInfoTitle, "Onyx Guard");
+        g_nid.dwInfoFlags = NIIF_INFO;
+        Shell_NotifyIconA(NIM_MODIFY, &g_nid);
+
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+DWORD WINAPI TrayIconThread(LPVOID lpParam) {
+    WNDCLASSA wc = { 0 };
+    wc.lpfnWndProc = TrayWndProc;
+    wc.hInstance = GetModuleHandle(NULL);
+    wc.lpszClassName = "OnyxGuardTrayClass";
+    RegisterClassA(&wc);
+
+    HWND hwnd = CreateWindowA(wc.lpszClassName, "OnyxGuard", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, wc.hInstance, NULL);
+
+    g_nid.cbSize = sizeof(NOTIFYICONDATAA);
+    g_nid.hWnd = hwnd;
+    g_nid.uID = 1001;
+    g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    g_nid.uCallbackMessage = WM_USER + 1;
+    g_nid.hIcon = CreateOnyxLogoIcon();
+    strcpy_s(g_nid.szTip, "Onyx Guard Anti-Hack (Active)");
+
+    Shell_NotifyIconA(NIM_ADD, &g_nid);
+    g_trayIconAdded = true;
+    g_trayHwnd = hwnd;
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    Shell_NotifyIconA(NIM_DELETE, &g_nid);
+    DestroyIcon(g_nid.hIcon);
+    g_trayIconAdded = false;
+    return 0;
+}
+
+// Thread routine launched immediately upon main.exe launch
+;
+    wc.lpfnWndProc = DefWindowProcA;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.hbrBackground = CreateSolidBrush(RGB(15, 15, 20));
+    wc.lpszClassName = "OnyxSplashClass";
+    RegisterClassA(&wc);
+
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    int splashW = 500;
+    int splashH = 260;
+
+    HWND hwndSplash = CreateWindowExA(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | 0x00080000, // WS_EX_LAYERED
+        "OnyxSplashClass",
+        "OnyxGuard Loading",
+        WS_POPUP | WS_VISIBLE,
+        (screenW - splashW) / 2, (screenH - splashH) / 2,
+        splashW, splashH,
+        NULL, NULL, wc.hInstance, NULL
+    );
+
+    // Dynamic library call for SetLayeredWindowAttributes to ensure legacy compatibility
+    HMODULE hUser32 = GetModuleHandleA("user32.dll");
+    if (hUser32) {
+        typedef BOOL(WINAPI *SLWA)(HWND, COLORREF, BYTE, DWORD);
+        SLWA pSetLayeredWindowAttributes = (SLWA)GetProcAddress(hUser32, "SetLayeredWindowAttributes");
+        if (pSetLayeredWindowAttributes) pSetLayeredWindowAttributes(hwndSplash, 0, 240, 2 /* LWA_ALPHA */);
+    }
+
+    if (hwndSplash) {
+        HDC hdc = GetDC(hwndSplash);
+        RECT rect;
+        GetClientRect(hwndSplash, &rect);
+
+        HFONT hFontTitle = CreateFontA(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        HFONT hFontDesc = CreateFontA(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+        
+        const char* steps[] = {
+            "Initializing OnyxGuard Core...",
+            "Establishing Secure Connection...",
+            "Scanning Memory Signatures...",
+            "Verifying File Integrity...",
+            "Loading Anti-Hack Modules...",
+            "Securing Process Environment..."
+        };
+
+        for (int i = 0; i <= 100; i += 2) {
+            HBRUSH bgBrush = CreateSolidBrush(RGB(12, 12, 16));
+            FillRect(hdc, &rect, bgBrush);
+            DeleteObject(bgBrush);
+
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(45, 212, 191));
+            HGDIOBJ oldPen = SelectObject(hdc, hPen);
+            HBRUSH nullBrush = (HBRUSH)GetStockObject(NULL_BRUSH);
+            HGDIOBJ oldBrush = SelectObject(hdc, nullBrush);
+            Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+            SelectObject(hdc, oldPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(hPen);
+
+            SetBkMode(hdc, TRANSPARENT);
+            
+            
+            // Draw Onyx Logo Gem
+            int cx = splashW / 2;
+            int cy = 60;
+            int size = 30;
+            POINT pts[4] = { {cx, cy - size}, {cx + size, cy}, {cx, cy + size}, {cx - size, cy} };
+            HBRUSH tealBrush = CreateSolidBrush(RGB(45, 212, 191));
+            HGDIOBJ oldBrush2 = SelectObject(hdc, tealBrush);
+            HPEN tealPen = CreatePen(PS_SOLID, 2, RGB(45, 212, 191));
+            HGDIOBJ oldPen2 = SelectObject(hdc, tealPen);
+            Polygon(hdc, pts, 4);
+            
+            POINT ptsInner[4] = { {cx, cy - size/2 + 2}, {cx + size/2 - 2, cy}, {cx, cy + size/2 - 2}, {cx - size/2 + 2, cy} };
+            HBRUSH darkBrush = CreateSolidBrush(RGB(12, 12, 16));
+            SelectObject(hdc, darkBrush);
+            Polygon(hdc, ptsInner, 4);
+            
+            SelectObject(hdc, oldBrush2);
+            SelectObject(hdc, oldPen2);
+            DeleteObject(tealBrush);
+            DeleteObject(tealPen);
+            DeleteObject(darkBrush);
+
+            SetTextColor(hdc, RGB(255, 255, 255));
+            SelectObject(hdc, hFontTitle);
+            RECT titleRect = { 0, 100, splashW, 140 };
+            DrawTextA(hdc, "ONYX GUARD", -1, &titleRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            SetTextColor(hdc, RGB(148, 163, 184));
+            SelectObject(hdc, hFontDesc);
+            RECT subRect = { 0, 135, splashW, 160 };
+            DrawTextA(hdc, "ADVANCED CLIENT PROTECTION", -1, &subRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            int stepIdx = (i / 18);
+            if (stepIdx > 5) stepIdx = 5;
+            SetTextColor(hdc, RGB(45, 212, 191));
+            RECT textRect = { 40, 185, splashW - 40, 205 };
+            DrawTextA(hdc, steps[stepIdx], -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            char pct[16];
+            wsprintfA(pct, "%d%%", i);
+            RECT pctRect = { 40, 185, splashW - 40, 205 };
+            DrawTextA(hdc, pct, -1, &pctRect, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+
+            RECT barBg = { 40, 210, splashW - 40, 220 };
+            HBRUSH barBgBrush = CreateSolidBrush(RGB(30, 41, 59));
+            FillRect(hdc, &barBg, barBgBrush);
+            DeleteObject(barBgBrush);
+
+            int fillW = ((splashW - 80) * i) / 100;
+            if (fillW > 0) {
+                RECT barFill = { 40, 210, 40 + fillW, 220 };
+                HBRUSH barFillBrush = CreateSolidBrush(RGB(45, 212, 191));
+                FillRect(hdc, &barFill, barFillBrush);
+                DeleteObject(barFillBrush);
+            }
+
+            Sleep(100);
+        }
+
+        DeleteObject(hFontTitle);
+        DeleteObject(hFontDesc);
+        ReleaseDC(hwndSplash, hdc);
+        DestroyWindow(hwndSplash);
+        UnregisterClassA("OnyxSplashClass", wc.hInstance);
+    }
+}
+` : ''}
+
+
+            
+            bool isCritical = false;
+            for (int i = 0; i < sizeof(CRITICAL_FILES) / sizeof(CRITICAL_FILES[0]); i++) {
+                std::string critFile = CRITICAL_FILES[i].filePath;
+                if (critFile.empty()) continue;
+                for(size_t j = 0; j < critFile.length(); ++j) {
+                    if (critFile[j] == '/') critFile[j] = '\\\\';
+                    critFile[j] = tolower(critFile[j]);
+                }
+                if (fileStr == critFile) {
+                    isCritical = true;
+                    break;
+                }
+            }
+            
+            if (isCritical) {
+                HandleFailure("REAL-TIME INTEGRITY VIOLATION: Game files were modified while running.");
+            }
+        }
+    }
+    CloseHandle(hDir);
+    return 0;
+}
+` : ''}
+
+
+// ==========================================
+// DYNAMIC REAL-TIME CLOUD LISTS (Firebase)
+// ==========================================
+
+
+void FetchDynamicLists() {
+    HINTERNET hInternet = InternetOpenA("OnyxGuard", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) return;
+
+    std::string host = "127.0.0.1";
+    std::string path = "/api/dumplist?projectId=";
+    size_t protocolPos = AUTH_SERVER_URL.find("://");
+    if (protocolPos != std::string::npos) {
+        host = AUTH_SERVER_URL.substr(protocolPos + 3);
+        size_t slashPos = host.find("/");
+        if (slashPos != std::string::npos) {
+            std::string basePath = host.substr(slashPos);
+            if (basePath.back() == '/') basePath.pop_back();
+            if (basePath.length() >= 9 && basePath.substr(basePath.length() - 9) == "/api/auth") {
+                path = basePath.substr(0, basePath.length() - 9) + "/api/dumplist?projectId=\$\{activeProjectId\}";
+            } else {
+                path = basePath + "/api/dumplist?projectId=\$\{activeProjectId\}";
+            }
+            host = host.substr(0, slashPos);
+        } else {
+            path = "/api/dumplist?projectId=";
+        }
+    }
+
+    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), 
+        AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
+        NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+
+    if (hConnect) {
+        DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
+        if (AUTH_SERVER_URL.find("https://") != std::string::npos) {
+            flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
+        }
+
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "GET", path.c_str(), NULL, NULL, NULL, flags, 0);
+        if (hRequest) {
+            if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+                std::string response;
+                char buffer[1024];
+                DWORD bytesRead;
+                while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+                    response.append(buffer, bytesRead);
+                }
+
+                // Parse response
+                std::stringstream ss(response);
+                std::string line;
+                int mode = 0;
+                while(std::getline(ss, line)) {
+                    if (!line.empty() && line.back() == '\\r') line.pop_back();
+                    if(line == "[WINDOWS]") { mode = 1; continue; }
+                    if(line == "[DUMPS]") { mode = 2; continue; }
+                    if(line.empty()) continue;
+                    
+                    if(mode == 1) {
+                        DYNAMIC_WINDOWS.push_back(line);
+                    } else if(mode == 2) {
+                        bool inQuotes = false;
+                        std::string currentToken;
+                        std::vector<std::string> parts;
+                        for (size_t k = 0; k < line.length(); ++k) {
+                            char c = line[k];
+                            if (c == '"') {
+                                inQuotes = !inQuotes;
+                            } else if ((c == ' ' || c == '\\t') && !inQuotes) {
+                                if (!currentToken.empty()) {
+                                    parts.push_back(currentToken);
+                                    currentToken.clear();
+                                }
+                            } else {
+                                currentToken += c;
+                            }
+                        }
+                        if (!currentToken.empty()) parts.push_back(currentToken);
+
+                        if(parts.size() >= 4) {
+                            try {
+                                DynamicSignature sig;
+                                sig.address = strtoul(parts[1].c_str(), NULL, 16);
+                                sig.name = parts.back();
+                                if(sig.name.size() > 2 && sig.name.front() == '"' && sig.name.back() == '"') {
+                                    sig.name = sig.name.substr(1, sig.name.size() - 2);
+                                }
+                                for(size_t i = 2; i < parts.size() - 1; i++) {
+                                    sig.signature.push_back((BYTE)strtoul(parts[i].c_str(), NULL, 16));
+                                }
+                                DYNAMIC_DUMPS.push_back(sig);
+                            } catch(...) {}
+                        }
+                    }
+                }
+            }
+            InternetCloseHandle(hRequest);
+        }
+        InternetCloseHandle(hConnect);
+    }
+    InternetCloseHandle(hInternet);
+}
+
+DWORD WINAPI IntegrityCheckThread(LPVOID lpParam) {
+    FetchDynamicLists();
+    
+    Sleep(500); // Wait for host window to complete loading
+    
+` : ''}
+
+` : ''}
+
+// Test Mode Check
+    if (IsTestModeEnabled()) {
+        HandleFailure("SECURITY BREACH: Windows is running in Test Mode (Testsigning). Please disable it to play.");
+        return 1;
+    }` : ''}
+    std::string hwid = GetHardwareID();
+    
+    
+    }` : '// File Integrity Verification is disabled in configs.'}
+
+    // Connect to the web API to validate player login & computer HWID
+    // In actual production, username can be retrieved from launcher launch parameters
+    char compNameUser[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+    DWORD compNameUserLen = MAX_COMPUTERNAME_LENGTH + 1;
+    if (!GetComputerNameA(compNameUser, &compNameUserLen)) {
+        lstrcpyA(compNameUser, "Player");
+    }
+    std::string accountName = compNameUser; 
+    
+    bool status = PerformHandshake(accountName, hwid, );
+    
+    if (!status) {
+        HandleFailure("CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized.");
+        return 1;
+    }
+    
+    // Set default message if empty (e.g. server down or not providing message)
+    if (g_startupMessage.empty()) {
+        g_startupMessage = "Welcome to Onyx Guard!";
+    }
+    
+    if (g_trayHwnd) {
+        PostMessageA(g_trayHwnd, WM_USER + 2, 0, 0);
+    }
+    
+    
+        tickCount++;
+        if(ScanForBlacklistedWindows()) {
+            HandleFailure("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
+        }
+` : ''}
+` : ''}
+` : ''}
+` : ''}
+        Sleep(3000); // Check every 3 seconds
+    }` : ''}
+    
+    return 0;
+}
+
+// DLL Entry Point
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH: {
+        // Disable unnecessary thread execution logs to optimize performance
+        DisableThreadLibraryCalls(hModule);
+        
+        
+        
+        // Prevent multi-client execution if configured
+        CreateSemaphoreA(NULL, 3, 3, "Global\\MuOnlineSecureSemaphore");, CreateSemaphoreA(NULL, 3, 3, "Global\\MuOnlineSecureSemaphore");, "Global\\\\MuOnlineSecureSemaphore");
+        if (hSemaphore != NULL) {
+            if (WaitForSingleObject(hSemaphore, 0) == WAIT_TIMEOUT) {
+                HandleFailure("MULTI-CLIENT DETECTED: Maximum allowed clients reached on this PC!");
+                return FALSE;
+            }
+        }` : `CreateMutexA(NULL, TRUE, "Global\\\\MuOnlineSecureMutexUniqueKey");
+        if (GetLastError() == ERROR_ALREADY_EXISTS) {
+            HandleFailure("MULTI-CLIENT DETECTED: Multi-Client is disabled on this server!");
+            return FALSE;
+        }`) : '// Multi-client checks disabled'}
+
+        // Start safety background thread
+        CreateThread(NULL, 0, IntegrityCheckThread, NULL, 0, NULL);
+        // Start system tray icon thread
+        CreateThread(NULL, 0, TrayIconThread, NULL, 0, NULL);
+        break;
+    }
+    case DLL_PROCESS_DETACH:
+        break;
+    }
+    return TRUE;
+}

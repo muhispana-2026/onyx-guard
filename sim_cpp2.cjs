@@ -1,9 +1,6 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-const m = code.match(/const cppCode = useMemo\(\(\) => \{[\s\S]*?return `([\s\S]*?)`;\n  \}, \[serverUrl/);
-const cppBody = m[1];
-
 const securityToken = "TEST_TOKEN";
 const clientVersion = "1.04d";
 const filesArrayContent = '    { "main.exe", "abcd" }';
@@ -24,6 +21,11 @@ const enableSplashScreen = true;
 const usePch = true;
 const multiClientLimit = 3;
 
+// extract the cppCode function body
+const cppStart = code.indexOf('const cppCode = useMemo(() => {\\n    return \`');
+const cppEnd = code.indexOf('\`;\\n  }, [serverUrl');
+const cppBody = code.substring(cppStart + 43, cppEnd);
 const evalStr = '\`' + cppBody + '\`';
+
 const generatedCpp = eval(evalStr);
-fs.writeFileSync('test3.cpp', generatedCpp);
+fs.writeFileSync('test2.cpp', generatedCpp);
