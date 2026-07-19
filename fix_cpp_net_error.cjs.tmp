@@ -120,7 +120,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('architecture');
 
   // Generator Options (Dynamic C++ Code generation)
-  const [serverUrl, setServerUrl] = useState(window.location.origin + '/api/auth');
+  const [serverUrl, setServerUrl] = useState('https://onyx-guard.onrender.com/api/auth');
   const [securityToken, setSecurityToken] = useState('MU_SECURE_TOKEN_2026_X');
   const [clientVersion, setClientVersion] = useState('1.04d');
   const [enableHwidCheck, setEnableHwidCheck] = useState(true);
@@ -1018,12 +1018,12 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
          << "}";
     
     std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\\r\\n";
+    std::string headers = "Content-Type: application/json\\\\r\\\\n";
 
 ${enablePayloadEncryption ? `    // Encrypting Payload before sending
     payload = EncryptPayload(payload);
     // Add custom header to indicate encrypted payload
-    headers += "X-Payload-Encrypted: true\\r\\n";
+    headers += "X-Payload-Encrypted: true\\\\r\\\\n";
 ` : ''}
 
     bool isAuthorized = false;
@@ -1081,9 +1081,6 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
         // If we reach here, it was a network error or malformed response
         InternetCloseHandle(hRequest);
         InternetCloseHandle(hConnect);
-        if (retry == maxRetries - 1) {
-            g_startupMessage = "Network error: Unable to connect to Authentication Server.";
-        }
         if (retry < maxRetries - 1) {
             Sleep(2000); // Wait 2s before retrying
         }
@@ -1222,7 +1219,7 @@ DWORD WINAPI TrayIconThread(LPVOID lpParam) {
 
 // Thread routine launched immediately upon main.exe launch
 ${enableSplashScreen ? `// Simple Splash Screen UI
-DWORD WINAPI SplashThread(LPVOID lpParam) {
+void ShowSplashScreen() {
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = DefWindowProcA;
     wc.hInstance = GetModuleHandleA(NULL);
@@ -1352,10 +1349,6 @@ DWORD WINAPI SplashThread(LPVOID lpParam) {
         DestroyWindow(hwndSplash);
         UnregisterClassA("OnyxSplashClass", wc.hInstance);
     }
-    return 0;
-}
-void ShowSplashScreen() {
-    CreateThread(NULL, 0, SplashThread, NULL, 0, NULL);
 }
 ` : ''}
 
@@ -1572,7 +1565,6 @@ ${enableTestModeBlock ? `    // Test Mode Check
     bool status = PerformHandshake(accountName, hwid, ${enableFileCheck ? 'faultyFile' : '""'});
     
     if (!status) {
-        Sleep(4500); // Allow splash screen progress bar to reach 100% visually
         std::string err = g_startupMessage.empty() ? "CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized." : g_startupMessage;
         HandleFailure(err);
         return 1;

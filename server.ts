@@ -15,7 +15,7 @@ const fbConfig = JSON.parse(fs.readFileSync('./firebase-applet-config.json', 'ut
 const firebaseApp = initializeApp(fbConfig);
 const db = getFirestore(firebaseApp, fbConfig.firestoreDatabaseId);
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+const PORT = 3000;
 
 async function seedData() {
   const projectsSnapshot = await getDocs(query(collection(db, 'projects'), limit(1)));
