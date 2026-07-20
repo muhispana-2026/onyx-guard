@@ -1,6 +1,8 @@
 {
-  "name": "MuOnline Authenticator",
+  "name": "OnyxGuard Authenticator",
   "description": "A real-time authentication hub and management dashboard for Mu Online servers. Handles secure game client validation, external API synchronization, security code generation, and live traffic logging.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
