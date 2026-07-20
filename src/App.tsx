@@ -595,18 +595,19 @@ export default function App() {
   // C++ Dynamic DLL code based on user configurations
   const cppCode = useMemo(() => {
     // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
-    const filesArrayContent = clientFiles.length > 0 ? `${clientFiles.map(f => `{ "\\\"${f.path}\\\"", "\\\"${f.expectedHash}\\\"" }`).join(',\n    ')}` : `    { "", "" } // Dummy element`;
+    const filesArrayContent = clientFiles.length > 0 ? `${clientFiles.map(f => `{ "${f.path}", "${f.expectedHash}" }`).join(',\n    ')}` : `    { "", "" } // Dummy element`;
 
 
 
-    const blacklistedArrayContent = blacklistedPrograms.length > 0 ? `${blacklistedPrograms.map(p => `"\\\"${p}\\\""`).join(', ')}` : `""`;
+    const blacklistedArrayContent = blacklistedPrograms.length > 0 ? `${blacklistedPrograms.map(p => `"${p}"`).join(', ')}` : `"DummyWindowName"`;
 
 
 
 
     const memorySignaturesContent = "";
     const dynamicDumpsArrayContent = dumps.length > 0 ? dumps.map(d => {
-            const safeNameFallback = (d.name || "Unknown").replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
+      const sanitizeString = (str) => str.replace(/[^\x00-\x7F]/g, "");
+            const safeNameFallback = sanitizeString((d.name || "Unknown").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "").replace(/\r/g, ""));
           if (!d.rawRule) return `    { 0, 0x0, {0}, 0, "${safeNameFallback}" }`;
           
           const p = [];
@@ -625,12 +626,13 @@ export default function App() {
           const addr = '0x' + addrHex;
           
           const bytes = p.slice(2, -1).map(b => {
+              b = sanitizeString(b);
               let tb = b.replace(/0x/i, '').trim();
               if (!/^[0-9a-fA-F]{1,2}$/.test(tb)) return '0x00';
               return '0x' + tb;
           }).join(', ');
           
-          const name = p[p.length - 1].replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
+          const name = sanitizeString(p[p.length - 1]).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "").replace(/\r/g, "");
           return `    { ${type}, ${addr}, { ${bytes} }, ${p.length - 3}, "${name}" }`;
       }).join(',\n')
       : `    { 0, 0x0, {0}, 0, "Dummy" }`;
@@ -695,7 +697,7 @@ bool ScanForBlacklistedWindows() {
         std::string win = DYNAMIC_WINDOWS[i];
         if (FindWindowA(NULL, win.c_str()) != NULL) return true;
     }
-    for (int i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
+    for (size_t i = 0; i < sizeof(BLACKLISTED_WINDOWS) / sizeof(BLACKLISTED_WINDOWS[0]); i++) {
         if (std::string(BLACKLISTED_WINDOWS[i]) == "DummyWindowName") continue;
         if (FindWindowA(NULL, BLACKLISTED_WINDOWS[i]) != NULL) {
             return true;
@@ -819,7 +821,7 @@ bool ScanMemorySignatures() {
         }
     }
 
-    for (int i = 0; i < sizeof(MEMORY_SIGNATURES) / sizeof(MEMORY_SIGNATURES[0]); i++) {
+    for (size_t i = 0; i < sizeof(MEMORY_SIGNATURES) / sizeof(MEMORY_SIGNATURES[0]); i++) {
         if (std::string(MEMORY_SIGNATURES[i].name) == "Dummy") continue;
         
         BYTE buffer[128];
@@ -998,7 +1000,7 @@ std::string CalculateFileMD5(const std::string& filePath) {
 }
 
 // Global tray icon data so we can update it from other threads
-NOTIFYICONDATAA g_nid = { 0 };
+NOTIFYICONDATAA g_nid = {};
 bool g_trayIconAdded = false;
 std::string g_startupMessage = "";
 HWND g_trayHwnd = NULL;
@@ -1162,6 +1164,7 @@ ${enablePayloadEncryption ? `    // Encrypting Payload before sending
 
 
 DWORD WINAPI HeartbeatThread(LPVOID lpParam) {
+    UNREFERENCED_PARAMETER(lpParam);
     std::string hwid = GetHardwareID();
     char compNameUser[MAX_COMPUTERNAME_LENGTH + 1] = { 0 };
     DWORD compNameUserLen = MAX_COMPUTERNAME_LENGTH + 1;
@@ -1363,7 +1366,8 @@ std::string GetFileHash(const std::string& filePath) {
 
 ${enableAntiMacro ? `
 DWORD WINAPI AntiMacroThread(LPVOID lpParam) {
-    std::vector<std::string> blacklistedWindows = { ${blacklistedPrograms.map(p => `\"\\\"${p}\\\"\"`).join(', ')} };
+    UNREFERENCED_PARAMETER(lpParam);
+    std::vector<std::string> blacklistedWindows = { ${blacklistedPrograms.length > 0 ? blacklistedPrograms.map(p => `"${p}"`).join(', ') : '"DummyWindowName"'} };
     while (true) {
         for (const auto& bw : blacklistedWindows) {
             HWND hFound = FindWindowA(NULL, bw.c_str());
@@ -1400,20 +1404,20 @@ ${enableAntiDebug ? `
         std::string hwid = GetHardwareID();
         std::string invalidFile = "none";
         
-${enableFileCheck ? `        // Check critical client file hashes
+${enableFileCheck && clientFiles.length > 0 ? `        // Check critical client file hashes
         std::string filesToVerify[] = {
-            ${clientFiles.map(f => `\"\\\"${f.path}\\\"\"`).join(',            ')}
+            ${clientFiles.map(f => `"${f.path}"`).join(',            ')}
         };
         std::string expectedHashes[] = {
-            ${clientFiles.map(f => `\"\\\"${f.expectedHash}\\\"\"`).join(',            ')}
+            ${clientFiles.map(f => `"${f.expectedHash}"`).join(',            ')}
         };
-        int numFiles = sizeof(filesToVerify) / sizeof(filesToVerify[0]);
-        for (int i = 0; i < numFiles; i++) {
+        size_t numFiles = sizeof(filesToVerify) / sizeof(filesToVerify[0]);
+        for (size_t i = 0; i < numFiles; i++) {
             if (GetFileAttributesA(filesToVerify[i].c_str()) == INVALID_FILE_ATTRIBUTES) {
                 invalidFile = filesToVerify[i];
                 break;
             }
-        }` : '// File check disabled'}
+        }` : '// File check disabled or no files configured'}
         
 ${enableSplashScreen ? `        ShowSplashScreen();\n` : ''}        bool isAllowed = SendValidationHandshake(username, hwid, invalidFile);
         
@@ -1427,6 +1431,25 @@ ${enableAntiMacro ? `
         EnforceBlock("Error loading security engine modules.");
         return false;
     }
+}
+
+extern "C" __declspec(dllexport) void InitSecurity() {
+    ValidateClientState("Player");
+}
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    UNREFERENCED_PARAMETER(lpReserved);
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hModule);
+        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitSecurity, NULL, 0, NULL);
+        break;
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+    case DLL_PROCESS_DETACH:
+        break;
+    }
+    return TRUE;
 }`;  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
 
 
