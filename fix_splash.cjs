@@ -1,19 +1,9 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/App.tsx', 'utf8');
+const splashFunc = "${enableSplashScreen ? `void ShowSplashScreen() {\\n    MessageBoxA(NULL, \"Onyx Guard Anti-Hack Loaded successfully. Checking client integrity...\", \"Onyx Guard - Startup\", MB_OK | MB_ICONINFORMATION);\\n}\\n` : ''}";
 
-const target1 = `    if (!status) {
-        std::string err = g_startupMessage.empty() ? "CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized." : g_startupMessage;
-        HandleFailure(err);
-        return 1;
-    }`;
+code = code.replace(/bool ValidateClientState\(const std::string& username\) \{/, splashFunc + '\nbool ValidateClientState(const std::string& username) {\n');
 
-const repl1 = `    if (!status) {
-        Sleep(2500); // Allow splash screen progress bar to reach 100% visually
-        std::string err = g_startupMessage.empty() ? "CRITICAL SECURITY ERROR: Your client files or Hardware ID are unauthorized." : g_startupMessage;
-        HandleFailure(err);
-        return 1;
-    }`;
+code = code.replace(/    try \{/, '    try {\n${enableSplashScreen ? `        ShowSplashScreen();\\n` : ``}');
 
-code = code.replace(target1, repl1);
 fs.writeFileSync('src/App.tsx', code);
-console.log("Fixed!");

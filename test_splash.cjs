@@ -1,6 +1,7 @@
 const fs = require('fs');
 
 const code = fs.readFileSync('src/App.tsx', 'utf8');
+
 const js = `
 const clientVersion = '1.04d';
 const usePch = false;
@@ -13,7 +14,7 @@ const enableFileCheck = true;
 const clientFiles = [{path: 'main.exe', expectedHash: 'abcd'}];
 const enableAntiMacro = true;
 const blacklistedPrograms = ['cheatengine.exe'];
-const actionOnFailure = 'MSG_BOX'; // USE THIS TO TEST MSG_BOX
+const actionOnFailure = 'EXIT';
 const enableMemoryScanner = true;
 const dumps = [{rawRule: 'type 0x0 0x12 hack', type: 'type', addr: '0', bytes: '12', name: 'hack'}];
 const enableTestModeBlock = false;
@@ -27,7 +28,7 @@ const activeProjectId = 'id';
 const serverUrl = 'url';
 const securityToken = 'token';
 const enableRealtimeMonitor = false;
-const enableSplashScreen = false;
+const enableSplashScreen = true;
 const multiClientLimit = 1;
 
 function useMemo(fn) { return fn(); }
@@ -38,4 +39,4 @@ const fs = require('fs');
 fs.writeFileSync('output.cpp', cppCode);
 `;
 
-fs.writeFileSync('runner3.cjs', js);
+fs.writeFileSync('runner_splash.cjs', js);

@@ -558,7 +558,7 @@ export default function App() {
             ip: simIp,
             clientVersion: simClientVersion,
             fileModified: simModifiedFile,
-            secretToken: securityToken
+            token: securityToken
           })
         });
         
@@ -595,18 +595,17 @@ export default function App() {
   // C++ Dynamic DLL code based on user configurations
   const cppCode = useMemo(() => {
     // Handling empty arrays for C++ to prevent "empty initializer" compiler errors
-    const filesArrayContent = clientFiles.length > 0 ? `${clientFiles.map(f => `{ "\\\"${f.path}\\\"", "\\\"${f.expectedHash}\\\"" }`).join(',\n    ')}` : `    { "", "" } // Dummy element`;
+    const filesArrayContent = clientFiles.length > 0 
+      ? clientFiles.map(f => `    { \"${f.path.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}\", \"${f.expectedHash}\" }`).join(',\n')
+      : `    { \"\", \"\" } // Dummy element`;
+      
+    const blacklistedArrayContent = blacklistedPrograms.length > 0
+      ? blacklistedPrograms.map(p => `    \"${p.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}\"`).join(',\n')
+      : `    \"DummyWindowName\" // Dummy element`;
 
-
-
-    const blacklistedArrayContent = blacklistedPrograms.length > 0 ? `${blacklistedPrograms.map(p => `"\\\"${p}\\\""`).join(', ')}` : `""`;
-
-
-
-
-    const memorySignaturesContent = "";
-    const dynamicDumpsArrayContent = dumps.length > 0 ? dumps.map(d => {
-            const safeNameFallback = (d.name || "Unknown").replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
+    const memorySignaturesContent = dumps.length > 0
+      ? dumps.map(d => {
+          const safeNameFallback = (d.name || "Unknown").replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '').replace(/\r/g, '');
           if (!d.rawRule) return `    { 0, 0x0, {0}, 0, "${safeNameFallback}" }`;
           
           const p = [];
@@ -619,7 +618,7 @@ export default function App() {
           
           if (p.length < 4) return `    { 0, 0x0, {0}, 0, "${safeNameFallback}" }`;
           
-          const type = parseInt(p[0]) || 0;
+          const type = p[0];
           let addrHex = p[1].replace(/0x/i, '').trim();
           if (!/^[0-9a-fA-F]+$/.test(addrHex)) addrHex = '0';
           const addr = '0x' + addrHex;
@@ -749,7 +748,7 @@ struct MemorySignature {
 };
 
 MemorySignature MEMORY_SIGNATURES[] = {
-${dynamicDumpsArrayContent}
+${memorySignaturesContent}
 };
 
 // AOB Pattern Scanner (Scans process memory modules for cheat signatures)
@@ -1063,7 +1062,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
     // Build Payload JSON body
     std::stringstream json;
     json << "{"
-             << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
+         << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
          << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
          << "\\\"clientVersion\\\": \\\"" << JsonEscape(CLIENT_VERSION) << "\\\","
          << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\","
@@ -1169,9 +1168,10 @@ DWORD WINAPI HeartbeatThread(LPVOID lpParam) {
         lstrcpyA(compNameUser, "Player");
     }
     std::string username = compNameUser;
-    
+
     while (true) {
         Sleep(30000); // 30 seconds heartbeat
+
         HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
         if (!hInternet) continue;
         
@@ -1192,245 +1192,236 @@ DWORD WINAPI HeartbeatThread(LPVOID lpParam) {
         } else {
             host = urlWithoutProtocol;
         }
-        
+
         INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
         DWORD flags = INTERNET_FLAG_RELOAD;
         if (AUTH_SERVER_URL.find("https://") == 0) {
             port = INTERNET_DEFAULT_HTTPS_PORT;
             flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
         }
-        
+
         std::stringstream json;
         json << "{"
-             << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
-             << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
-             << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\""
+             << "\\"username\\": \\"" << JsonEscape(username) << "\\","
+             << "\\"hwid\\": \\"" << JsonEscape(hwid) << "\\","
+             << "\\"secretToken\\": \\"" << JsonEscape(SECRET_TOKEN) << "\\""
              << "}";
-        
-        std::string payload = json.str();
-        std::string headers = "Content-Type: application/json\\r\\n";
-${enablePayloadEncryption ? `
-        payload = EncryptPayload(payload);
-        headers += "X-Payload-Encrypted: true\\r\\n";` : ''}
-        
-        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-        if (hConnect) {
-            HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
-            if (hRequest) {
-                DWORD dwFlags = 0;
-                DWORD dwBuffLen = sizeof(dwFlags);
-                if (InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffLen)) {
-                    dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_WRONG_USAGE;
-                    InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
-                }
+
+        [DllImport("kernel32.dll")]
+        private static extern void ExitProcess(uint uExitCode);
+
+${enableAntiDebug ? `        [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+        private static extern bool IsDebuggerPresent();
+        [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+        private static extern bool CheckRemoteDebuggerPresent(IntPtr hProcess, ref bool isDebuggerPresent);` : ''}
+
+${enablePayloadEncryption ? `        private static string EncryptPayload(string data)
+        {
+            string key = SECRET_TOKEN;
+            char[] encrypted = new char[data.Length];
+            for (int i = 0; i < data.Length; i++)
+            {
+                encrypted[i] = (char)(data[i] ^ key[i % key.Length]);
+            }
+            return new string(encrypted);
+        }` : ''}
+
+        // Run client verification before allowing connection
+        public static bool ValidateClientState(string username)
+        {
+            try
+            {
+${enableProcessBinding ? `                // Enforce main.exe binding
+                Process currentProcess = Process.GetCurrentProcess();
+                if (!currentProcess.ProcessName.Equals("main", StringComparison.OrdinalIgnoreCase))
+                {
+                    EnforceBlock("UNAUTHORIZED PROCESS: Onyx Guard must only be loaded via main.exe.");
+                    return false;
+                }` : ''}
+
+${enableAntiDebug ? `                // Anti-Debugger Check
+                bool isRemote = false;
+                CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isRemote);
+                if (IsDebuggerPresent() || isRemote)
+                {
+                    EnforceBlock("DEBUGGER DETECTED: Please close all reverse-engineering tools.");
+                    return false;
+                }` : ''}
+
+                string hwid = FetchHWID();
+                string invalidFile = "none";
+
+                ${enableFileCheck ? `// Check critical client file hashes
+                string[] filesToVerify = {
+                    ${clientFiles.map(f => `"${f.path}"`).join(',                    ')}
+                };
+
+                string[] expectedHashes = {
+                    ${clientFiles.map(f => `"${f.expectedHash}"`).join(',                    ')}
+                };
+
+                for (int i = 0; i < filesToVerify.Length; i++)
+                {
+                    if (!File.Exists(filesToVerify[i]))
+                    {
+                        invalidFile = filesToVerify[i];
+                        break;
+                    }
+
+                    string fileHash = GetFileHash(filesToVerify[i]);
+                    if (fileHash != expectedHashes[i])
+                    {
+                        invalidFile = filesToVerify[i];
+                        break;
+                    }
+                }` : '// File check disabled'}
+
+                // Query Central API Server for login validation
+                bool isAllowed = SendValidationHandshake(username, hwid, invalidFile);
                 
-                if (HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length())) {
-                    char buffer[1024];
-                    DWORD bytesRead = 0;
-                    std::string responseString = "";
-                    while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
-                        buffer[bytesRead] = '\\0';
-                        responseString += buffer;
-                    }
-                    if (responseString.find("\\\"action\\\":\\\"EXIT\\\"") != std::string::npos || responseString.find("\\\"action\\\": \\\"EXIT\\\"") != std::string::npos || responseString.find("\\\"success\\\":false") != std::string::npos) {
-                        ExitProcess(0);
-                    }
-                }
-                InternetCloseHandle(hRequest);
-            }
-            InternetCloseHandle(hConnect);
-        }
-        InternetCloseHandle(hInternet);
-    }
-    return 0;
-}
-
-void ExitProcessWrapper(UINT uExitCode) {
-    ExitProcess(uExitCode);
-}
-
-${enableAntiDebug ? `
-bool IsDebuggerPresentWrapper() {
-    return IsDebuggerPresent();
-}
-bool CheckRemoteDebuggerPresentWrapper(HANDLE hProcess, PBOOL pbDebuggerPresent) {
-    return CheckRemoteDebuggerPresent(hProcess, pbDebuggerPresent);
-}
-` : ''}
-
-void EnforceBlock(const std::string& errorMsg) {
-    g_startupMessage = errorMsg;
-    HWND hWnd = GetConsoleWindow();
-    if (hWnd != NULL) {
-        ShowWindow(hWnd, SW_HIDE);
-    }
-${actionOnFailure === 'EXIT' ? '    ExitProcess(0);' : (actionOnFailure === 'MSG_BOX' ? '    MessageBoxA(NULL, errorMsg.c_str(), "Onyx Guard - Error", MB_OK | MB_ICONERROR);\n    ExitProcess(0);' : '    ExitProcess(0);')}
-}
-
-bool SendValidationHandshake(const std::string& user, const std::string& hwid, const std::string& modFile) {
-    std::stringstream json;
-    json << "{"
-         << "\\\"username\\\": \\\"" << JsonEscape(user) << "\\\","
-         << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
-         << "\\\"clientVersion\\\": \\\"" << JsonEscape(CLIENT_VERSION) << "\\\","
-         << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\","
-         << "\\\"fileModified\\\": \\\"" << (modFile.empty() ? "none" : JsonEscape(modFile)) << "\\\""
-         << "}";
-    std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\\r\\n";
-${enablePayloadEncryption ? `
-    payload = EncryptPayload(payload);
-    headers += "X-Payload-Encrypted: true\\r\\n";` : ''}
-    
-    HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-    if (!hInternet) return false;
-    
-    std::string host = "127.0.0.1";
-    std::string path = "/api/auth";
-    size_t protocolPos = AUTH_SERVER_URL.find("://");
-    std::string urlWithoutProtocol = (protocolPos == std::string::npos) ? AUTH_SERVER_URL : AUTH_SERVER_URL.substr(protocolPos + 3);
-    size_t slashPos = urlWithoutProtocol.find("/");
-    if (slashPos != std::string::npos) {
-        host = urlWithoutProtocol.substr(0, slashPos);
-        path = urlWithoutProtocol.substr(slashPos);
-    } else {
-        host = urlWithoutProtocol;
-    }
-    INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
-    DWORD flags = INTERNET_FLAG_RELOAD;
-    if (AUTH_SERVER_URL.find("https://") == 0) {
-        port = INTERNET_DEFAULT_HTTPS_PORT;
-        flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
-    }
-    
-    bool isAllowed = false;
-    int maxRetries = 3;
-    for (int retry = 0; retry < maxRetries; retry++) {
-        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-        if (hConnect) {
-            HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
-            if (hRequest) {
-                DWORD dwFlags = 0;
-                DWORD dwBuffLen = sizeof(dwFlags);
-                if (InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffLen)) {
-                    dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_WRONG_USAGE;
-                    InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
-                }
-                if (HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length())) {
-                    char buffer[1024];
-                    DWORD bytesRead = 0;
-                    std::string responseString = "";
-                    while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
-                        buffer[bytesRead] = '\\0';
-                        responseString += buffer;
-                    }
-                    if (responseString.find("\\\"action\\\":\\\"CONTINUE\\\"") != std::string::npos || responseString.find("\\\"action\\\": \\\"CONTINUE\\\"") != std::string::npos || responseString.find("\\\"success\\\":true") != std::string::npos) {
-                        isAllowed = true;
-                        break;
-                    }
-                    if (responseString.find("\\\"action\\\":\\\"EXIT\\\"") != std::string::npos || responseString.find("\\\"action\\\": \\\"EXIT\\\"") != std::string::npos || responseString.find("\\\"success\\\":false") != std::string::npos) {
-                        size_t msgStart = responseString.find("\\\"message\\\":\\\"");
-                        if (msgStart != std::string::npos) {
-                            msgStart += 11;
-                            size_t msgEnd = responseString.find("\\"", msgStart);
-                            if (msgEnd != std::string::npos) {
-                                g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
+                ${enableAntiMacro ? `if (isAllowed) 
+                {
+                    // Start Background Macro Scanner
+                    System.Threading.Tasks.Task.Run(() => {
+                        string[] blacklistedWindows = { ${blacklistedPrograms.map(p => `"${p}"`).join(', ')} };
+                        while(true)
+                        {
+                            foreach (Process p in Process.GetProcesses())
+                            {
+                                foreach (string bw in blacklistedWindows)
+                                {
+                                    if (p.MainWindowTitle.Contains(bw) || p.ProcessName.Contains(bw))
+                                    {
+                                        EnforceBlock("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
+                                    }
+                                }
                             }
+                            System.Threading.Thread.Sleep(3000);
                         }
-                        isAllowed = false;
-                        break;
+                    });
+                }` : ''}
+                
+                return isAllowed;
+            }
+            catch (Exception ex)
+            {
+                EnforceBlock("Error loading security engine modules: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static string FetchHWID()
+        {
+            try {
+                return "HWID-" + Environment.MachineName;
+            }
+            catch {
+                return "HWID-GENERIC-WIN10-CLIENT";
+            }
+        }
+
+        private static string GetFileHash(string filePath)
+        {
+            using (var md5 = MD5.Create())
+            {
+                using (var stream = File.OpenRead(filePath))
+                {
+                    byte[] hash = md5.ComputeHash(stream);
+                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                }
+            }
+        }
+
+        private static string GetMd5String(string input)
+        {
+            using (MD5 md5 = MD5.Create())
+            {
+                byte[] inputBytes = Encoding.ASCII.GetBytes(input);
+                byte[] hashBytes = md5.ComputeHash(inputBytes);
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < hashBytes.Length; i++) {
+                    sb.Append(hashBytes[i].ToString("X2"));
+                }
+                return sb.ToString();
+            }
+        }
+
+        private static bool SendValidationHandshake(string user, string hwid, string modFile)
+        {
+            string jsonPayload = string.Format(
+                "{{\\\"username\\\":\\\"{0}\\\",\\\"hwid\\\":\\\"{1}\\\",\\\"clientVersion\\\":\\\"{2}\\\",\\\"secretToken\\\":\\\"{3}\\\",\\\"fileModified\\\":\\\"{4}\\\"}}",
+                user, hwid, REQ_VERSION, SECRET_TOKEN, modFile
+            );
+
+${enablePayloadEncryption ? `            jsonPayload = EncryptPayload(jsonPayload);` : ''}
+            byte[] byteArray = Encoding.UTF8.GetBytes(jsonPayload);
+
+            int maxRetries = 3;
+            for (int retry = 0; retry < maxRetries; retry++)
+            {
+                try
+                {
+                    var request = (HttpWebRequest)WebRequest.Create(API_URL);
+                    request.Method = "POST";
+                    request.ContentType = "application/json";
+                    request.Timeout = 5000;
+${enablePayloadEncryption ? `                    request.Headers.Add("X-Payload-Encrypted", "true");` : ''}
+                    request.ContentLength = byteArray.Length;
+
+                    using (Stream dataStream = request.GetRequestStream())
+                    {
+                        dataStream.Write(byteArray, 0, byteArray.Length);
+                    }
+
+                    using (var response = (HttpWebResponse)request.GetResponse())
+                    using (var reader = new StreamReader(response.GetResponseStream()))
+                    {
+                        string responseText = reader.ReadToEnd();
+                        if (responseText.Contains("\"action\":\"CONTINUE\"") || responseText.Contains("\"action\": \"CONTINUE\"") || responseText.Contains("\"success\":true"))
+                            return true;
+                        
+                        if (responseText.Contains("\"action\":\"EXIT\"") || responseText.Contains("\"action\": \"EXIT\"") || responseText.Contains("\"success\":false"))
+                        {
+                            int msgStart = responseText.IndexOf("\"message\":\"");
+                            if (msgStart != -1) {
+                                msgStart += 11;
+                                int msgEnd = responseText.IndexOf("\"", msgStart);
+                                if (msgEnd != -1) {
+                                    g_startupMessage = responseText.Substring(msgStart, msgEnd - msgStart);
+                                }
+                            }
+                            return false; // Explicit rejection from server
+                        }
                     }
                 }
-                InternetCloseHandle(hRequest);
+                catch
+                {
+                    if (retry == maxRetries - 1) return false;
+                    System.Threading.Thread.Sleep(2000);
+                }
             }
-            InternetCloseHandle(hConnect);
-        }
-        Sleep(2000);
-    }
-    InternetCloseHandle(hInternet);
-    return isAllowed;
-}
-
-std::string GetFileHash(const std::string& filePath) {
-    HANDLE hFile = CreateFileA(filePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) return "";
-    DWORD fileSize = GetFileSize(hFile, NULL);
-    CloseHandle(hFile);
-    std::stringstream ss;
-    ss << std::hex << fileSize;
-    return ss.str();
-}
-
-${enableAntiMacro ? `
-DWORD WINAPI AntiMacroThread(LPVOID lpParam) {
-    std::vector<std::string> blacklistedWindows = { ${blacklistedPrograms.map(p => `\"\\\"${p}\\\"\"`).join(', ')} };
-    while (true) {
-        for (const auto& bw : blacklistedWindows) {
-            HWND hFound = FindWindowA(NULL, bw.c_str());
-            if (hFound != NULL) {
-                EnforceBlock("ILLEGAL SOFTWARE DETECTED: A blacklisted macro, auto-clicker, or memory editor was found.");
-            }
-        }
-        Sleep(3000);
-    }
-    return 0;
-}
-` : ''}
-
-${enableSplashScreen ? `void ShowSplashScreen() {\n    MessageBoxA(NULL, "Onyx Guard Anti-Hack Loaded successfully. Checking client integrity...", "Onyx Guard - Startup", MB_OK | MB_ICONINFORMATION);\n}\n` : ''}
-bool ValidateClientState(const std::string& username) {
-
-    try {
-${enableProcessBinding ? `
-        char processName[MAX_PATH];
-        GetModuleFileNameA(NULL, processName, MAX_PATH);
-        std::string pName(processName);
-        if (pName.find("main.exe") == std::string::npos && pName.find("main") == std::string::npos) {
-            EnforceBlock("UNAUTHORIZED PROCESS: Onyx Guard must only be loaded via main.exe.");
             return false;
-        }` : ''}
-${enableAntiDebug ? `
-        BOOL isRemote = FALSE;
-        CheckRemoteDebuggerPresent(GetCurrentProcess(), &isRemote);
-        if (IsDebuggerPresent() || isRemote) {
-            EnforceBlock("DEBUGGER DETECTED: Please close all reverse-engineering tools.");
-            return false;
-        }` : ''}
-        
-        std::string hwid = GetHardwareID();
-        std::string invalidFile = "none";
-        
-${enableFileCheck ? `        // Check critical client file hashes
-        std::string filesToVerify[] = {
-            ${clientFiles.map(f => `\"\\\"${f.path}\\\"\"`).join(',            ')}
-        };
-        std::string expectedHashes[] = {
-            ${clientFiles.map(f => `\"\\\"${f.expectedHash}\\\"\"`).join(',            ')}
-        };
-        int numFiles = sizeof(filesToVerify) / sizeof(filesToVerify[0]);
-        for (int i = 0; i < numFiles; i++) {
-            if (GetFileAttributesA(filesToVerify[i].c_str()) == INVALID_FILE_ATTRIBUTES) {
-                invalidFile = filesToVerify[i];
-                break;
-            }
-        }` : '// File check disabled'}
-        
-${enableSplashScreen ? `        ShowSplashScreen();\n` : ''}        bool isAllowed = SendValidationHandshake(username, hwid, invalidFile);
-        
-${enableAntiMacro ? `
-        if (isAllowed) {
-            CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)AntiMacroThread, NULL, 0, NULL);
-        }` : ''}
-        
-        return isAllowed;
-    } catch (...) {
-        EnforceBlock("Error loading security engine modules.");
-        return false;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        private static void EnforceBlock(string errorMsg)
+        {
+            try {
+                Process p = Process.GetCurrentProcess();
+                if (p.MainWindowHandle != IntPtr.Zero) {
+                    ShowWindow(p.MainWindowHandle, 0);
+                }
+            } catch {}
+            
+            ${actionOnFailure === 'EXIT' ? '            Process.GetCurrentProcess().Kill();' : (actionOnFailure === 'MSG_BOX' ? '            // En C# usamos solo Kill sin popup si se quiere tray (requeriría wrapper)\n            Process.GetCurrentProcess().Kill();' : '            Process.GetCurrentProcess().Kill();')}
+        }
     }
-}`;  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
+}
+`;
+  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding]);
 
-
-  const csharpCode = "/* C# Template currently being updated. Please use the C++ DLL template. */";
 
   // Filtered Logs
   const filteredLogs = useMemo(() => {
@@ -2989,7 +2980,7 @@ ${enableAntiMacro ? `
                             hwid: 'SIMULATED-HWID-HACK',
                             ip: '127.0.0.1',
                             clientVersion: clientVersion,
-                            secretToken: securityToken,
+                            token: securityToken,
                             fileModified: 'C:\\Games\\MuOnline\\CheatEngine_Bypass.dll'
                           })
                         });
@@ -3013,7 +3004,7 @@ ${enableAntiMacro ? `
                               hwid: 'SIMULATED-HWID-SAFE',
                               ip: '127.0.0.1',
                               clientVersion: clientVersion,
-                              secretToken: securityToken,
+                              token: securityToken,
                               fileModified: 'C:\\Games\\MuOnline\\Logs\\update_2026.log'
                             })
                           });

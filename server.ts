@@ -313,125 +313,87 @@ app.set('trust proxy', true);
   // ==========================================
   // DLL AUTHENTICATION ENDPOINT (Game Client)
   // ==========================================
-    app.post("/api/auth", async (req, res) => {
+    
+  app.post("/api/heartbeat", async (req, res) => {
     try {
-      let parsedBody = req.body;
-      if (Buffer.isBuffer(req.body) || req.headers['x-payload-encrypted'] === 'true') {
-          const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body.toString());
-          try {
-              const str = buffer.toString('utf8');
-              const json = JSON.parse(str);
-              if (json && typeof json === 'object') {
-                  parsedBody = json;
-              }
-          } catch (e) { }
-          
-          if (!parsedBody || Object.keys(parsedBody).length === 0 || Buffer.isBuffer(parsedBody)) {
-              const configs = await getDocs(collection(db, 'config'));
-              let decryptedStr = "";
-              for (const doc of configs.docs) {
-                  const token = doc.data().securityToken;
-                  if (!token) continue;
-                  const decrypted = Buffer.alloc(buffer.length);
-                  for (let i = 0; i < buffer.length; i++) {
-                      decrypted[i] = buffer[i] ^ token.charCodeAt(i % token.length);
-                  }
-                  try {
-                      const str = decrypted.toString('utf8');
-                      JSON.parse(str);
-                      decryptedStr = str;
-                      break;
-                  } catch (e) {}
-              }
-              if (!decryptedStr) {
-                  return res.json({ success: false, action: "EXIT", message: "Invalid encrypted payload" });
-              }
-              parsedBody = JSON.parse(decryptedStr);
-          }
-      }
-      const { username, hwid, clientVersion, fileModified, token, secretToken } = parsedBody;
-      let ip = parsedBody.ip || req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || 'Unknown';
-      if (Array.isArray(ip)) ip = ip[0];
-      if (ip.includes(',')) ip = ip.split(',')[0];
-      const actualToken = token || secretToken;
-      const timestamp = new Date().toISOString();
+      const { username, hwid, secretToken } = req.body;
       
-      const tokenQuery = await getDocs(query(collection(db, 'config'), where('securityToken', '==', actualToken), limit(1)));
+      const projQuery = await getDocs(query(collection(db, 'projects'), where('secretToken', '==', secretToken), limit(1)));
+      if (projQuery.empty) {
+        return res.status(401).json({ success: false });
+      }
+      const project = projQuery.docs[0].data();
+      const projectId = project.id;
       
-      if (tokenQuery.empty) {
-        return res.json({ success: false, action: "EXIT", message: "Invalid token" });
-      }
-      
-      const configDoc = tokenQuery.docs[0];
-      const config = configDoc.data();
-      const projectId = config.projectId;
-      
-      const logEntry = async (status: string, reason: string) => {
-        const id = Date.now().toString() + Math.random().toString(36).substring(2, 9);
-        await setDoc(doc(db, 'logs', id), {
-          id, projectId, timestamp, type: 'CONNECTION', username: username || 'Unknown', 
-          status, reason, hwid: hwid || 'Unknown', ip: ip || 'Unknown', clientVersion: clientVersion || 'Unknown'
-        });
-      };
-
-      if (config.licenseExpiration) {
-        const expDate = new Date(config.licenseExpiration);
-        if (new Date() > expDate) {
-          await logEntry("BLOCKED", `Anti-Hack license expired on ${config.licenseExpiration}`);
-          return res.json({ success: false, action: config.actionOnFailure, message: "Anti-Hack License Expired" });
-        }
-      }
-
-      if (clientVersion !== config.clientVersion) {
-        await logEntry("BLOCKED", `Client version mismatch (Expected: ${config.clientVersion})`);
-        return res.json({ success: false, action: config.actionOnFailure, message: "Invalid version" });
-      }
-
-      if (config.enableFileCheck && fileModified && fileModified !== 'none') {
-        let isSafe = false;
-        try {
-            if (process.env.GEMINI_API_KEY) {
-                const prompt = `Analiza este archivo de juego modificado en un entorno de Mu Online: '${fileModified}'. ¿Es un hack/cheat conocido (como Cheat Engine, Haste, SpeedHack, AutoClicker, WPE Pro) o es un archivo inofensivo (como un log de error, un archivo de texto, o configuracion visual)? Responde SOLO con 'HACK' o 'SEGURO'.`;
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: prompt,
-                });
-                const aiResult = response.text.trim().toUpperCase();
-                if (aiResult.includes('SEGURO')) {
-                    isSafe = true;
-                    await logEntry("ALLOWED", `AI Analysis: ${fileModified} was deemed SAFE by Onyx Guard AI.`);
-                } else {
-                    await logEntry("BLOCKED", `AI Analysis: ${fileModified} detected as HACK/CHEAT by Onyx Guard AI.`);
-                }
-            }
-        } catch (e) {
-            console.error("AI Analysis error:", e);
-        }
-
-        if (!isSafe) {
-            await logEntry("BLOCKED", `Modified file detected: ${fileModified}`);
-            return res.json({ success: false, action: config.actionOnFailure, message: `Onyx Guard AI detectó modificación maliciosa: ${fileModified}` });
-        }
-      }
-
-      if (config.enableMultiClientBlock && hwid) {
-        const activeClientsQuery = await getDocs(query(collection(db, 'logs'), where('projectId', '==', projectId), where('hwid', '==', hwid), where('status', '==', 'ALLOWED')));
-        // Simplified multi-client check (just checking recent allowed logins within 5 mins for same HWID)
-        const recentLogins = activeClientsQuery.docs.filter(d => {
-            const timeDiff = new Date().getTime() - new Date(d.data().timestamp).getTime();
-            return timeDiff < 5 * 60 * 1000;
-        });
-        const limitClients = config.multiClientLimit || 3;
-        if (recentLogins.length >= limitClients) {
-            await logEntry("BLOCKED", `Multi-client limit reached (${limitClients})`);
-            return res.json({ success: false, action: config.actionOnFailure, message: `Multi-client limit reached (${limitClients})` });
-        }
-      }
-
-      if (config.enableHwidCheck && username) {
+      if (username) {
         const accQuery = await getDocs(query(collection(db, 'accounts'), where('username', '==', username), where('projectId', '==', projectId), limit(1)));
+        if (!accQuery.empty) {
+          const account = accQuery.docs[0].data();
+          
+          if (account.status === 'BANNED' || account.status === 'TEMP_BANNED') {
+            return res.json({ success: false, action: "EXIT" });
+          }
+          
+          await updateDoc(doc(db, 'accounts', accQuery.docs[0].id), { 
+            lastHeartbeat: new Date().toISOString(),
+            status: account.status === 'ACTIVE' || account.status === 'ONLINE' ? 'ONLINE' : account.status
+          });
+        }
+      }
+
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: (e as Error).message });
+    }
+  });
+
+  app.post(["/api/report", "/api/auth"], async (req, res) => {
+    try {
+      const { username, hwid, secretToken, reason } = req.body;
+      let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+      if (Array.isArray(ip)) ip = ip[0];
+      
+      const projQuery = await getDocs(query(collection(db, 'projects'), where('secretToken', '==', secretToken), limit(1)));
+      if (projQuery.empty) {
+        return res.status(401).json({ success: false });
+      }
+      const project = projQuery.docs[0].data();
+      const projectId = project.id;
+      
+      const timestamp = new Date().toISOString();
+      const logId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
+      await setDoc(doc(db, 'logs', logId), {
+        id: logId,
+        projectId,
+        type: "BLOCKED",
+        message: `HACK DETECTED [${username || 'Unknown'} - ${hwid || 'Unknown'}]: ${reason}`,
+        timestamp
+      });
+
+      // Auto ban - we set the unban time to 5 minutes from now
+      if (username) {
         
-        if (accQuery.empty) {
+      const accQuery = await getDocs(query(collection(db, 'accounts'), where('username', '==', username), where('projectId', '==', projectId), limit(1)));
+      let account;
+      
+      if (!accQuery.empty) {
+        account = accQuery.docs[0].data();
+        if (account.status === 'BANNED') {
+          return res.json({ success: false, action: 'EXIT', message: "This account has been permanently banned." });
+        }
+        if (account.status === 'TEMP_BANNED') {
+          if (account.unbanTime && new Date(account.unbanTime) > new Date()) {
+             return res.json({ success: false, action: 'EXIT', message: "Security violation. Please remove the cheat and wait 5 minutes before logging in." });
+          } else {
+             // Ban expired, restore account
+             await updateDoc(doc(db, 'accounts', accQuery.docs[0].id), { status: 'ONLINE', unbanTime: null });
+             account.status = 'ONLINE';
+          }
+        }
+      }
+      
+      if (accQuery.empty) {
+
           const newAccountId = Date.now().toString() + Math.random().toString(36).substring(2, 9);
           await setDoc(doc(db, 'accounts', newAccountId), {
             id: newAccountId,
@@ -439,9 +401,10 @@ app.set('trust proxy', true);
             username,
             hwid: hwid || 'Unknown',
             status: 'ACTIVE',
+            ip: ip,
             lastLogin: timestamp
           });
-          await logEntry("ALLOWED", `Auto-registered account ${username} with HWID ${hwid}`);
+          await console.log("ALLOWED", `Auto-registered account ${username} with HWID ${hwid}`);
           return res.json({
             success: true,
             action: "CONTINUE",
@@ -451,22 +414,25 @@ app.set('trust proxy', true);
         }
         
         const accDoc = accQuery.docs[0];
-        const account = accDoc.data();
+        account = accDoc.data();
         
         if (account.status === "BANNED") {
-          await logEntry("BLOCKED", `Account is banned`);
-          return res.json({ success: false, action: config.actionOnFailure, message: "Banned" });
+          await console.log("BLOCKED", `Account is banned`);
+          return res.json({ success: false, action: 'EXIT', message: "Banned" });
         }
         
-        if (account.hwid && account.hwid !== hwid) {
-          await logEntry("BLOCKED", `HWID mismatch (Expected: ${account.hwid}, Got: ${hwid})`);
-          return res.json({ success: false, action: config.actionOnFailure, message: "HWID mismatch" });
+        if (!account.hwid || account.hwid === 'Unknown' || account.hwid === '') {
+          await updateDoc(doc(db, 'accounts', account.id), { hwid: hwid, ip: ip, lastLogin: timestamp });
+          await console.log("ALLOWED", `Locked existing account ${username} to HWID ${hwid}`);
+        } else if (account.hwid !== hwid) {
+          await console.log("BLOCKED", `HWID mismatch (Expected: ${account.hwid}, Got: ${hwid})`);
+          return res.json({ success: false, action: 'EXIT', message: "HWID mismatch" });
+        } else {
+          await updateDoc(doc(db, 'accounts', account.id), { ip: ip, lastLogin: timestamp });
         }
-        
-        await updateDoc(doc(db, 'accounts', account.id), { lastLogin: timestamp });
       }
 
-      await logEntry("ALLOWED", "Authorization successful");
+      await console.log("ALLOWED", "Authorization successful");
       res.json({
         success: true,
         action: "CONTINUE",
