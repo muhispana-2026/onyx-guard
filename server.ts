@@ -527,7 +527,7 @@ async function startServer() {
           return res.json({
             success: true,
             action: "CONTINUE",
-            message: `Bienvenido ${authIdentifier}, tu equipo con IP ${ip} y HWID ${hwid} ha sido registrado en Onyx Guard. Disfruta del juego.`,
+            message: `${authIdentifier}, tu equipo ha sido registrado en Onyx Guard. Disfruta del juego.`,
             sessionToken: Math.random().toString(36).substring(2, 15)
           });
         }

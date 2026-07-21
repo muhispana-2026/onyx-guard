@@ -143,7 +143,7 @@ export default function App() {
   const [enableTestModeBlock, setEnableTestModeBlock] = useState(true);
   const [enableWatchdog, setEnableWatchdog] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
-  const [blacklistedPrograms, setBlacklistedPrograms] = useState<string[]>(['Cheat Engine', 'AutoClicker', 'SpeedHack', 'WPE PRO', 'OllyDbg', 'Wireshark']);
+  const [blacklistedProgramsText, setBlacklistedProgramsText] = useState<string>('Cheat Engine, AutoClicker, SpeedHack, WPE PRO, OllyDbg, Wireshark');
   const [licenseExpiration, setLicenseExpiration] = useState('');
   const [actionOnFailure, setActionOnFailure] = useState<'EXIT' | 'MSG_BOX' | 'CRASH'>('MSG_BOX');
   const [selectedLanguage, setSelectedLanguage] = useState<'cpp' | 'csharp'>('cpp');
@@ -219,7 +219,7 @@ export default function App() {
         if (data.enableTestModeBlock !== undefined) setEnableTestModeBlock(data.enableTestModeBlock);
         if (data.enableWatchdog !== undefined) setEnableWatchdog(data.enableWatchdog);
         if (data.enablePayloadEncryption !== undefined) setEnablePayloadEncryption(data.enablePayloadEncryption);
-        if (data.blacklistedPrograms !== undefined) setBlacklistedPrograms(data.blacklistedPrograms || []);
+        if (data.blacklistedPrograms !== undefined) setBlacklistedProgramsText((data.blacklistedPrograms || []).join(', '));
         if (data.licenseExpiration !== undefined) setLicenseExpiration(data.licenseExpiration);
         
         setLoadedProjectId(activeProjectId);
@@ -250,12 +250,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms, licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms: blacklistedProgramsText.split(',').map(s => s.trim()).filter(Boolean), licenseExpiration
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedProgramsText, licenseExpiration, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -616,7 +616,8 @@ export default function App() {
 
 
 
-    const blacklistedArrayContent = blacklistedPrograms.length > 0 ? `${blacklistedPrograms.map(p => `"${p}"`).join(', ')}` : `"DummyWindowName"`;
+    const parsedBlacklisted = blacklistedProgramsText.split(',').map(s => s.trim()).filter(Boolean);
+    const blacklistedArrayContent = parsedBlacklisted.length > 0 ? `${parsedBlacklisted.map(p => `\"${p}\"`).join(', ')}` : `\"DummyWindowName\"`;
 
 
 
@@ -719,7 +720,7 @@ struct DynamicSignature {
 std::vector<DynamicSignature> DYNAMIC_DUMPS;
 
 const char* BLACKLISTED_WINDOWS[] = {
-${blacklistedPrograms.length > 0 ? blacklistedPrograms.map(p => `    "${p}"`).join(',\n') : '    "DummyWindowName"'}
+${(() => { const parsed = blacklistedProgramsText.split(',').map(s=>s.trim()).filter(Boolean); return parsed.length > 0 ? parsed.map(p => `    \"${p}\"`).join(',\n') : '    \"DummyWindowName\"'; })()}
 };
 
 void WriteDebugLog(const std::string& type, const std::string& name, DWORD address, const BYTE* readBytes, size_t length) {
@@ -1857,7 +1858,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         break;
     }
     return TRUE; 
-}`;  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedPrograms, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, targetProcessName]);
+}`;  }, [serverUrl, securityToken, clientVersion, enableFileCheck, actionOnFailure, enableAntiMacro, blacklistedProgramsText, clientFiles, enableDllScanner, enableMemoryScanner, enableSplashScreen, enablePayloadEncryption, enableAntiDebug, enableProcessBinding, targetProcessName]);
 
 
   const csharpCode = "/* C# Template currently being updated. Please use the C++ DLL template. */";
@@ -2689,8 +2690,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <div className="mt-2 pl-6">
                       <input 
                         type="text" 
-                        value={blacklistedPrograms.join(', ')}
-                        onChange={(e) => setBlacklistedPrograms(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        value={blacklistedProgramsText}
+                        onChange={(e) => setBlacklistedProgramsText(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-300 font-mono focus:border-amber-500 focus:outline-none text-xs"
                         placeholder="Cheat Engine, AutoClicker, SpeedHack"
                       />
