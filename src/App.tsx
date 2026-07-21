@@ -51,7 +51,9 @@ interface AuthLog {
   hwid: string;
   ip: string;
   clientVersion: string;
-  status: 'ALLOWED' | 'BLOCKED_HWID' | 'BLOCKED_HASH' | 'BLOCKED_VERSION' | 'BANNED';
+  status: 'ALLOWED' | 'BLOCKED_HWID' | 'BLOCKED_HASH' | 'BLOCKED_VERSION' | 'BANNED' | 'BLOCKED';
+  type?: string;
+  message?: string;
   reason: string;
   fileModified?: string;
 }
@@ -1801,6 +1803,46 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
         if (tickCount % 10 == 0) { 
             FetchDynamicLists();
         }
+        if (tickCount % 20 == 0) {
+            // Heartbeat
+            HINTERNET hNet = InternetOpenA("MuOnline", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+            if (hNet) {
+                std::string bHost = "127.0.0.1";
+                std::string bPath = "/api/heartbeat";
+                size_t pPos = AUTH_SERVER_URL.find("://");
+                if (pPos != std::string::npos) {
+                    bHost = AUTH_SERVER_URL.substr(pPos + 3);
+                    size_t sPos = bHost.find("/");
+                    if (sPos != std::string::npos) {
+                        bPath = bHost.substr(sPos);
+                        bHost = bHost.substr(0, sPos);
+                        if (bPath.back() == '/') bPath.pop_back();
+                        if (bPath.length() >= 9 && bPath.substr(bPath.length() - 9) == "/api/auth") {
+                            bPath = bPath.substr(0, bPath.length() - 9) + "/api/heartbeat";
+                        } else {
+                            bPath = bPath + "/api/heartbeat";
+                        }
+                    }
+                }
+                
+                HINTERNET hConn = InternetConnectA(hNet, bHost.c_str(), 
+                    AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
+                    NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+                if (hConn) {
+                    DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
+                    if (AUTH_SERVER_URL.find("https://") != std::string::npos) flags |= INTERNET_FLAG_SECURE;
+                    HINTERNET hReq = HttpOpenRequestA(hConn, "POST", bPath.c_str(), NULL, NULL, NULL, flags, 0);
+                    if (hReq) {
+                        std::string hJson = "{\"username\":\"" + JsonEscape(accountName) + "\",\"hwid\":\"" + JsonEscape(hwid) + "\",\"secretToken\":\"" + JsonEscape(SECRET_TOKEN) + "\"}";
+                        std::string hHeaders = "Content-Type: application/json\r\n";
+                        HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length());
+                        InternetCloseHandle(hReq);
+                    }
+                    InternetCloseHandle(hConn);
+                }
+                InternetCloseHandle(hNet);
+            }
+        }
         tickCount++;
         
         // --- Escaneos en Tiempo Real Estilo Premium ---
@@ -1871,8 +1913,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                             (log.ip || '').includes(searchTerm);
       
       if (logFilter === 'ALL') return matchesSearch;
-      if (logFilter === 'ALLOWED') return matchesSearch && log.status === 'ALLOWED';
-      if (logFilter === 'BLOCKED') return matchesSearch && log.status !== 'ALLOWED';
+      if (logFilter === 'ALLOWED') return matchesSearch && (log.status === 'ALLOWED' || log.type === 'INFO');
+      if (logFilter === 'BLOCKED') return matchesSearch && log.status !== 'ALLOWED' && log.type !== 'INFO';
       return matchesSearch;
     });
   }, [logs, searchTerm, logFilter]);
@@ -2142,7 +2184,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
               <div>
                 <div className="text-[10px] text-slate-500 uppercase font-mono font-bold">{t.header.hacksBlocked}</div>
                 <div className="text-xs text-red-400 font-mono font-semibold">
-                  {logs.filter(l => l.status !== 'ALLOWED').length} {t.header.attempts}
+                  {logs.filter(l => l.status !== 'ALLOWED' && l.type !== 'INFO').length} {t.header.attempts}
                 </div>
               </div>
             </div>
@@ -3492,14 +3534,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 </div>
 
                 <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 h-[500px] overflow-y-auto font-mono text-xs">
-                  {logs.filter(l => l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó')).length === 0 ? (
+                  {logs.filter(l => (l.reason && (l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó'))) || (l.message && (l.message.includes('AI Analysis:') || l.message.includes('IA detectó')))).length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-4">
                       <Brain className="w-12 h-12 opacity-20" />
                       <p>{language === 'es' ? 'No hay eventos de IA registrados aún.' : 'No AI events logged yet.'}</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {logs.filter(l => l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó')).map((log, i) => (
+                      {logs.filter(l => (l.reason && (l.reason.includes('AI Analysis:') || l.reason.includes('IA detectó'))) || (l.message && (l.message.includes('AI Analysis:') || l.message.includes('IA detectó')))).map((log, i) => (
                         <div key={log.id} className={`p-3 rounded border ${log.status === 'ALLOWED' ? 'bg-blue-900/10 border-blue-900/30' : 'bg-red-900/10 border-red-900/30'} flex flex-col gap-2`}>
                           <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
                             <span className="text-slate-500">{new Date(log.timestamp).toLocaleString()}</span>
@@ -3582,7 +3624,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       <div 
                         key={log.id} 
                         className={`p-5 rounded-lg border text-sm font-mono flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-                          log.status === 'ALLOWED' 
+                          (log.status === 'ALLOWED' || log.type === 'INFO') 
                             ? 'bg-emerald-950/10 border-emerald-950/50 text-emerald-300/90' 
                             : 'bg-red-950/10 border-red-950/50 text-red-300/90'
                         }`}
@@ -3592,11 +3634,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           
                           <div className="flex items-center gap-2">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
-                              log.status === 'ALLOWED' 
+                              (log.status === 'ALLOWED' || log.type === 'INFO') 
                                 ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/10' 
                                 : 'bg-red-950 text-red-400 border border-red-500/10'
                             }`}>
-                              {log.status === 'ALLOWED' ? (language === 'es' ? 'PERMITIDO' : 'ALLOWED') : (language === 'es' ? 'RECHAZADO' : 'BLOCKED')}
+                              {(log.status === 'ALLOWED' || log.type === 'INFO') ? (language === 'es' ? 'PERMITIDO' : 'ALLOWED') : (language === 'es' ? 'RECHAZADO' : 'BLOCKED')}
                             </span>
                             <span className="font-bold text-slate-200">{log.username}</span>
                           </div>
@@ -3607,12 +3649,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                         </div>
 
                         <div className="text-slate-400 text-[11px] md:text-right flex items-center gap-1.5 bg-slate-950/40 p-1.5 rounded border border-slate-800/40 md:max-w-md shrink-0">
-                          {log.status !== 'ALLOWED' ? (
+                          {(log.status !== 'ALLOWED' && log.type !== 'INFO') ? (
                             <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                           ) : (
                             <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                           )}
-                          <span>{log.reason}</span>
+                          <span>{log.reason || log.message}</span>
                         </div>
                       </div>
                     ))
