@@ -15,11 +15,11 @@ async function seedData() {
     const { createPool } = await import('./src/db/index.ts');
     const pool = createPool();
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS projects (
+      CREATE TABLE IF NOT EXISTS  projects (
         id text PRIMARY KEY NOT NULL,
         name text NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS config (
+      CREATE TABLE IF NOT EXISTS  config (
         project_id text PRIMARY KEY NOT NULL,
         server_url text NOT NULL,
         client_version text NOT NULL,
@@ -44,7 +44,7 @@ async function seedData() {
         blacklisted_programs text[],
         license_expiration text
       );
-      CREATE TABLE IF NOT EXISTS accounts (
+      CREATE TABLE IF NOT EXISTS  accounts (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         username text NOT NULL,
@@ -57,7 +57,7 @@ async function seedData() {
         hwid_reset_count integer DEFAULT 0,
         notes text
       );
-      CREATE TABLE IF NOT EXISTS file_rules (
+      CREATE TABLE IF NOT EXISTS  file_rules (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         file_path text NOT NULL,
@@ -65,7 +65,7 @@ async function seedData() {
         importance text DEFAULT 'HIGH' NOT NULL,
         file_size text DEFAULT 'Unknown'
       );
-      CREATE TABLE IF NOT EXISTS dumps (
+      CREATE TABLE IF NOT EXISTS  dumps (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         name text NOT NULL,
@@ -73,7 +73,7 @@ async function seedData() {
         raw_rule text NOT NULL,
         timestamp text NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS logs (
+      CREATE TABLE IF NOT EXISTS  logs (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         type text NOT NULL,
@@ -110,6 +110,8 @@ seedData();
 
 async function startServer() {
   
+
+  
   const originalError = console.error;
   console.error = (...args) => {
     if (typeof args[0] === 'string' && args[0].includes('BloomFilter')) return;
@@ -125,16 +127,16 @@ async function startServer() {
       const { createPool } = await import('./src/db/index.ts');
       const pool = createPool();
       const queries = [
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_splash_screen boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_process_binding boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_api_hook_detection boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_heuristics boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_test_mode_block boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_watchdog boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_payload_encryption boolean",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS blacklisted_programs text[]",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS license_expiration text",
-        "ALTER TABLE config ADD COLUMN IF NOT EXISTS multi_client_limit integer"
+        "ALTER TABLE config ADD COLUMN  enable_splash_screen boolean",
+        "ALTER TABLE config ADD COLUMN  enable_process_binding boolean",
+        "ALTER TABLE config ADD COLUMN  enable_api_hook_detection boolean",
+        "ALTER TABLE config ADD COLUMN  enable_heuristics boolean",
+        "ALTER TABLE config ADD COLUMN  enable_test_mode_block boolean",
+        "ALTER TABLE config ADD COLUMN  enable_watchdog boolean",
+        "ALTER TABLE config ADD COLUMN  enable_payload_encryption boolean",
+        "ALTER TABLE config ADD COLUMN  blacklisted_programs text[]",
+        "ALTER TABLE config ADD COLUMN  license_expiration text",
+        "ALTER TABLE config ADD COLUMN  multi_client_limit integer"
       ];
       let results = [];
       for (const q of queries) {
@@ -466,7 +468,7 @@ async function startServer() {
   app.post(["/api/report", "/api/auth"], async (req, res) => {
     try {
       const { username, hwid, secretToken, reason } = req.body;
-      let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+      let ip = req.body.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
       if (Array.isArray(ip)) ip = ip[0];
       
       const conf = await db.select().from(config).where(eq(config.securityToken, secretToken));
@@ -481,7 +483,12 @@ async function startServer() {
           projectId,
           type: "BLOCKED",
           message: `HACK DETECTED [${username || 'Unknown'} - ${hwid || 'Unknown'}]: ${reason}`,
-          timestamp
+          timestamp,
+          username: username || 'Unknown',
+          hwid: hwid || 'Unknown',
+          ip: ip,
+          clientVersion: req.body.clientVersion || 'Unknown',
+          reason: reason
         });
       }
 
@@ -494,7 +501,8 @@ async function startServer() {
           if (account.status === 'BANNED') {
             await db.insert(logs).values({
               id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-              projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: Account is permanently banned.`, timestamp
+              projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: Account is permanently banned.`, timestamp,
+              username: authIdentifier, hwid: hwid || 'Unknown', ip: ip, clientVersion: req.body.clientVersion || 'Unknown', reason: 'Account permanently banned'
             });
             return res.json({ success: false, action: 'EXIT', message: "This account has been permanently banned." });
           }
@@ -502,7 +510,8 @@ async function startServer() {
             if (account.unbanTime && new Date(account.unbanTime) > new Date()) {
                await db.insert(logs).values({
                  id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-                 projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: Account is temporarily banned.`, timestamp
+                 projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: Account is temporarily banned.`, timestamp,
+                 username: authIdentifier, hwid: hwid || 'Unknown', ip: ip, clientVersion: req.body.clientVersion || 'Unknown', reason: 'Account temporarily banned'
                });
                return res.json({ success: false, action: 'EXIT', message: "Security violation. Please wait 5 minutes." });
             } else {
@@ -516,7 +525,8 @@ async function startServer() {
           } else if (account.hwid !== hwid) {
             await db.insert(logs).values({
               id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-              projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: HWID mismatch (${hwid} vs ${account.hwid}).`, timestamp
+              projectId, type: "BLOCKED", message: `AUTH BLOCKED [${authIdentifier}]: HWID mismatch (${hwid} vs ${account.hwid}).`, timestamp,
+              username: authIdentifier, hwid: hwid || 'Unknown', ip: ip, clientVersion: req.body.clientVersion || 'Unknown', reason: `HWID mismatch (${hwid} vs ${account.hwid})`
             });
             return res.json({ success: false, action: 'EXIT', message: "HWID mismatch" });
           } else {
@@ -526,7 +536,8 @@ async function startServer() {
           if (!reason) {
             await db.insert(logs).values({
               id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-              projectId, type: "INFO", message: `AUTH SUCCESS [${authIdentifier} - ${hwid}]`, timestamp
+              projectId, type: "INFO", message: `AUTH SUCCESS [${authIdentifier} - ${hwid}]`, timestamp,
+              username: authIdentifier, hwid: hwid || 'Unknown', ip: ip, clientVersion: req.body.clientVersion || 'Unknown', reason: 'Authorized'
             });
           }
         } else {
@@ -543,7 +554,8 @@ async function startServer() {
           if (!reason) {
             await db.insert(logs).values({
               id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-              projectId, type: "INFO", message: `NEW ACCOUNT REGISTERED [${authIdentifier} - ${hwid}]`, timestamp
+              projectId, type: "INFO", message: `NEW ACCOUNT REGISTERED [${authIdentifier} - ${hwid}]`, timestamp,
+              username: authIdentifier, hwid: hwid || 'Unknown', ip: ip, clientVersion: req.body.clientVersion || 'Unknown', reason: 'Registered successfully'
             });
           }
           return res.json({

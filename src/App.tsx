@@ -1833,8 +1833,8 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
                     if (AUTH_SERVER_URL.find("https://") != std::string::npos) flags |= INTERNET_FLAG_SECURE;
                     HINTERNET hReq = HttpOpenRequestA(hConn, "POST", bPath.c_str(), NULL, NULL, NULL, flags, 0);
                     if (hReq) {
-                        std::string hJson = "{\"username\":\"" + JsonEscape(accountName) + "\",\"hwid\":\"" + JsonEscape(hwid) + "\",\"secretToken\":\"" + JsonEscape(SECRET_TOKEN) + "\"}";
-                        std::string hHeaders = "Content-Type: application/json\r\n";
+                        std::string hJson = "{\\\"username\\\":\\\"" + JsonEscape(accountName) + "\\\",\\\"hwid\\\":\\\"" + JsonEscape(hwid) + "\\\",\\\"secretToken\\\":\\\"" + JsonEscape(SECRET_TOKEN) + "\\\"}";
+                        std::string hHeaders = "Content-Type: application/json\\r\\n";
                         HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length());
                         InternetCloseHandle(hReq);
                     }
@@ -2022,7 +2022,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   {authError && <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm text-center">{authError}</div>}
                   <input
                     type="email"
-                    value={email}
+                    value={email || ""}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Email"
                     className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
@@ -2030,7 +2030,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   />
                   <input
                     type="password"
-                    value={password}
+                    value={password || ""}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Password"
                     className="w-full bg-slate-950/50 border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
@@ -2093,7 +2093,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <input
                     autoFocus
                     type="text"
-                    value={newProjectName}
+                    value={newProjectName || ""}
                     onChange={(e) => setNewProjectName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') submitCreateProject();
@@ -2115,7 +2115,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
               ) : (
                 <>
                   <select 
-                    value={activeProjectId} 
+                    value={activeProjectId || ""} 
                     onChange={(e) => setActiveProjectId(e.target.value)}
                     className="bg-slate-900 border border-slate-700 text-amber-500 font-bold px-3 py-1.5 rounded-md text-sm outline-none cursor-pointer focus:border-amber-500 transition-colors"
                   >
@@ -2576,7 +2576,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     </label>
                     <input 
                       type="text" 
-                      value={serverUrl}
+                      value={serverUrl || ""}
                       onChange={(e) => setServerUrl(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
                     />
@@ -2587,7 +2587,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     </label>
                     <input 
                       type="text" 
-                      value={clientVersion}
+                      value={clientVersion || ""}
                       onChange={(e) => setClientVersion(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
                     />
@@ -2603,7 +2603,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <div className="flex gap-2">
                       <input 
                         type="text" 
-                        value={securityToken}
+                        value={securityToken || ""}
                         onChange={(e) => setSecurityToken(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
                       />
@@ -2621,7 +2621,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       {language === 'es' ? 'ACCIÓN AL DETECTAR INFRACCIÓN:' : 'ACTION ON SECURITY BREACH:'}
                     </label>
                     <select 
-                      value={actionOnFailure}
+                      value={actionOnFailure || ""}
                       onChange={(e) => setActionOnFailure(e.target.value as any)}
                       className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
                     >
@@ -2732,7 +2732,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <div className="mt-2 pl-6">
                       <input 
                         type="text" 
-                        value={blacklistedProgramsText}
+                        value={blacklistedProgramsText || ""}
                         onChange={(e) => setBlacklistedProgramsText(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-300 font-mono focus:border-amber-500 focus:outline-none text-xs"
                         placeholder="Cheat Engine, AutoClicker, SpeedHack"
@@ -2789,7 +2789,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       {enableProcessBinding && (
                         <input 
                           type="text" 
-                          value={targetProcessName}
+                          value={targetProcessName || ""}
                           onChange={(e) => setTargetProcessName(e.target.value)}
                           className="ml-6 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-300 w-32 focus:border-amber-500 focus:outline-none"
                           placeholder="main.exe"
@@ -2928,7 +2928,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       <input 
                         type="text" 
                         placeholder={language === 'es' ? 'Buscar jugadores o HWID...' : 'Search players or HWID...'}
-                        value={searchTerm}
+                        value={searchTerm || ""}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm focus:border-amber-500 focus:outline-none"
                       />
@@ -3069,7 +3069,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                         <input 
                           type="text" 
                           placeholder="e.g. ElfArcher" 
-                          value={newAccUser}
+                          value={newAccUser || ""}
                           onChange={(e) => setNewAccUser(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-sm text-amber-200 focus:border-amber-500 focus:outline-none"
                         />
@@ -3081,7 +3081,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                         <input 
                           type="text" 
                           placeholder={language === 'es' ? 'Dejar en blanco para registrar al iniciar' : 'Leave blank for automatic login registration'} 
-                          value={newAccHwid}
+                          value={newAccHwid || ""}
                           onChange={(e) => setNewAccHwid(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-sm text-amber-200 focus:border-amber-500 focus:outline-none font-mono"
                         />
@@ -3200,7 +3200,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           <input 
                             type="text" 
                             placeholder={language === 'es' ? 'Ruta (ej. Data/item.bmd)' : 'File path (e.g. Data/item.bmd)'} 
-                            value={newFilePath}
+                            value={newFilePath || ""}
                             onChange={(e) => setNewFilePath(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-sm text-amber-200 focus:border-amber-500 focus:outline-none"
                             required
@@ -3211,13 +3211,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           <input 
                             type="text" 
                             placeholder={language === 'es' ? 'Suma de Comprobación MD5' : 'Expected MD5 Hash signature'} 
-                            value={newFileHash}
+                            value={newFileHash || ""}
                             onChange={(e) => setNewFileHash(e.target.value)}
                             className="flex-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-sm text-amber-200 focus:border-amber-500 focus:outline-none font-mono"
                             required
                           />
                           <select 
-                            value={newFileImportance}
+                            value={newFileImportance || ""}
                             onChange={(e) => setNewFileImportance(e.target.value as any)}
                             className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
                           >
@@ -3432,7 +3432,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           <input 
                             type="text" 
                             placeholder="e.g. CheatEngine.exe" 
-                            value={newDumpName}
+                            value={newDumpName || ""}
                             onChange={(e) => setNewDumpName(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-sm text-amber-200 focus:border-amber-500 focus:outline-none font-mono"
                             required
@@ -3445,7 +3445,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           <input 
                             type="text" 
                             placeholder="e.g. Memory Editor" 
-                            value={newDumpDesc}
+                            value={newDumpDesc || ""}
                             onChange={(e) => setNewDumpDesc(e.target.value)}
                             className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-sm text-slate-300 focus:border-amber-500 focus:outline-none"
                             required
@@ -3551,10 +3551,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                           </div>
                           <div className="flex gap-4">
                             <div className="flex-1">
-                              <span className="text-slate-500">Player:</span> <span className="text-slate-300">{log.username}</span>
+                              <span className="text-slate-500">Player:</span> <span className="text-slate-300">{log.username || "Unknown"}</span>
                             </div>
                             <div className="flex-1">
-                              <span className="text-slate-500">HWID:</span> <span className="text-slate-300">{log.hwid}</span>
+                              <span className="text-slate-500">HWID:</span> <span className="text-slate-300">{log.hwid || "Unknown"}</span>
                             </div>
                           </div>
                           <div className="mt-1 flex items-start gap-2">
@@ -3640,12 +3640,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                             }`}>
                               {(log.status === 'ALLOWED' || log.type === 'INFO') ? (language === 'es' ? 'PERMITIDO' : 'ALLOWED') : (language === 'es' ? 'RECHAZADO' : 'BLOCKED')}
                             </span>
-                            <span className="font-bold text-slate-200">{log.username}</span>
+                            <span className="font-bold text-slate-200">{log.username || "Unknown"}</span>
                           </div>
 
-                          <span className="text-slate-500">{language === 'es' ? 'HWID: ' : 'HWID: '}<strong className="text-amber-400/80 font-medium">{log.hwid}</strong></span>
-                          <span className="text-slate-500">IP: <strong className="text-slate-300 font-medium">{log.ip}</strong></span>
-                          <span className="text-slate-500">Ver: <strong className="text-slate-300 font-medium">v{log.clientVersion}</strong></span>
+                          <span className="text-slate-500">{language === 'es' ? 'HWID: ' : 'HWID: '}<strong className="text-amber-400/80 font-medium">{log.hwid || "Unknown"}</strong></span>
+                          <span className="text-slate-500">IP: <strong className="text-slate-300 font-medium">{log.ip || "Unknown"}</strong></span>
+                          <span className="text-slate-500">Ver: <strong className="text-slate-300 font-medium">v{log.clientVersion || "Unknown"}</strong></span>
                         </div>
 
                         <div className="text-slate-400 text-[11px] md:text-right flex items-center gap-1.5 bg-slate-950/40 p-1.5 rounded border border-slate-800/40 md:max-w-md shrink-0">
@@ -3713,7 +3713,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       </label>
                       <input 
                         type="text" 
-                        value={simUsername}
+                        value={simUsername || ""}
                         onChange={(e) => setSimUsername(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-200 focus:border-amber-500 focus:outline-none font-bold"
                         disabled={isSimulating}
@@ -3733,7 +3733,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       </label>
                       <input 
                         type="text" 
-                        value={simHwid}
+                        value={simHwid || ""}
                         onChange={(e) => setSimHwid(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 font-mono text-amber-300 focus:border-amber-500 focus:outline-none text-[11px]"
                         disabled={isSimulating}
@@ -3745,7 +3745,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                         <label className="block text-slate-400 font-mono mb-1">{language === 'es' ? 'Simular Dirección IP:' : 'Simulate IP Address:'}</label>
                         <input 
                           type="text" 
-                          value={simIp}
+                          value={simIp || ""}
                           onChange={(e) => setSimIp(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-300 focus:border-amber-500 focus:outline-none font-mono"
                           disabled={isSimulating}
@@ -3755,7 +3755,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                         <label className="block text-slate-400 font-mono mb-1">{language === 'es' ? 'Versión de DLL:' : 'DLL Version Flag:'}</label>
                         <input 
                           type="text" 
-                          value={simClientVersion}
+                          value={simClientVersion || ""}
                           onChange={(e) => setSimClientVersion(e.target.value)}
                           className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-slate-300 focus:border-amber-500 focus:outline-none font-mono"
                           disabled={isSimulating}
@@ -3766,7 +3766,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <div>
                       <label className="block text-slate-400 font-mono mb-1">{language === 'es' ? 'Modificación de Archivos (Hacks):' : 'Trigger File Tampering Event:'}</label>
                       <select 
-                        value={simModifiedFile}
+                        value={simModifiedFile || ""}
                         onChange={(e) => setSimModifiedFile(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:border-amber-500 focus:outline-none font-mono"
                         disabled={isSimulating}

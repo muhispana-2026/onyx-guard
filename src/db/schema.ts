@@ -58,6 +58,11 @@ export const logs = pgTable('logs', {
   type: text('type'),
   message: text('message'),
   timestamp: text('timestamp'),
+  username: text('username'),
+  hwid: text('hwid'),
+  ip: text('ip'),
+  clientVersion: text('client_version'),
+  reason: text('reason'),
 });
 
 export const dumps = pgTable('dumps', {
