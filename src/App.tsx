@@ -1145,7 +1145,12 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
     HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) return false;
 
-    DWORD timeout = 5000;
+    
+    DWORD timeout = 30000;
+    DWORD secureProtocols = 0x00000800; // TLS 1.2
+    InternetSetOptionA(hInternet, 31 /* INTERNET_OPTION_SECURE_PROTOCOLS */, &secureProtocols, sizeof(secureProtocols));
+    DWORD secureProtocols = 0x00000800; // TLS 1.2
+    InternetSetOptionA(hInternet, 31 /* INTERNET_OPTION_SECURE_PROTOCOLS */, &secureProtocols, sizeof(secureProtocols));
     InternetSetOptionA(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
     InternetSetOptionA(hInternet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
     InternetSetOptionA(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
@@ -1215,9 +1220,13 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
             InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
         }
 
-        BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
-        
-        if (result) {
+                BOOL result = HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
+        if (!result) {
+            DWORD err = GetLastError();
+            std::stringstream ss;
+            ss << "Network error: Unable to connect to Authentication Server. HttpSendRequest failed: " << err;
+            if (retry == maxRetries - 1) g_startupMessage = ss.str();
+        } else {
             char buffer[1024];
             DWORD bytesRead = 0;
             std::string responseString = "";
@@ -1241,11 +1250,18 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 break; 
             } else if (responseString.find("\\\"action\\\":") != std::string::npos) {
                 isAuthorized = false;
+                size_t msgStart = responseString.find("\\\"message\\\":\\\"");
+                if (msgStart != std::string::npos) {
+                    msgStart += 11;
+                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    if (msgEnd != std::string::npos) {
+                        g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
+                    }
+                }
                 InternetCloseHandle(hRequest);
                 InternetCloseHandle(hConnect);
                 break; 
-            }
-        }
+             }
         
         InternetCloseHandle(hRequest);
         InternetCloseHandle(hConnect);
