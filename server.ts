@@ -168,14 +168,6 @@ async function startServer() {
   const getProjectId = (req: express.Request) => req.headers['x-project-id'] as string || 'project_alpha';
 
 
-  app.post("/api/auth", async (req, res) => {
-    try {
-      res.json({ success: true, message: "Authorized" });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
@@ -493,8 +485,9 @@ async function startServer() {
         });
       }
 
-      if (username) {
-        const projectAccs = await db.select().from(accounts).where(and(eq(accounts.username, username), eq(accounts.projectId, projectId)));
+            const authIdentifier = username || (hwid ? 'Player_' + hwid.substring(0, 6) : 'Unknown');
+      if (authIdentifier) {
+        const projectAccs = await db.select().from(accounts).where(and(eq(accounts.username, authIdentifier), eq(accounts.projectId, projectId)));
         
         if (projectAccs.length > 0) {
           let account = projectAccs[0];
@@ -509,7 +502,6 @@ async function startServer() {
                account.status = 'ONLINE';
             }
           }
-
           if (account.status === "BANNED") {
             return res.json({ success: false, action: 'EXIT', message: "Banned" });
           }
@@ -526,7 +518,7 @@ async function startServer() {
           await db.insert(accounts).values({
             id: newAccountId,
             projectId,
-            username,
+            username: authIdentifier,
             hwid: hwid || 'Unknown',
             status: 'ACTIVE',
             ip: ip as string,
@@ -535,19 +527,17 @@ async function startServer() {
           return res.json({
             success: true,
             action: "CONTINUE",
-            message: "Welcome! Registered PC successfully.",
+            message: `Bienvenido ${authIdentifier}, tu equipo con IP ${ip} y HWID ${hwid} ha sido registrado en Onyx Guard. Disfruta del juego.`,
             sessionToken: Math.random().toString(36).substring(2, 15)
           });
         }
       }
-
       res.json({
         success: true,
         action: "CONTINUE",
-        message: "Authentication successful.",
+        message: authIdentifier ? `Bienvenido nuevamente ${authIdentifier}, disfruta del juego.` : "Authentication successful.",
         sessionToken: Math.random().toString(36).substring(2, 15)
       });
-      
     } catch (e: any) {
       res.status(500).json({ success: false, action: "EXIT", message: "Internal server error: " + e.message });
       console.error(e);
