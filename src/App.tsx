@@ -1149,8 +1149,6 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
     DWORD timeout = 30000;
     DWORD secureProtocols = 0x00000800; // TLS 1.2
     InternetSetOptionA(hInternet, 31 /* INTERNET_OPTION_SECURE_PROTOCOLS */, &secureProtocols, sizeof(secureProtocols));
-    DWORD secureProtocols = 0x00000800; // TLS 1.2
-    InternetSetOptionA(hInternet, 31 /* INTERNET_OPTION_SECURE_PROTOCOLS */, &secureProtocols, sizeof(secureProtocols));
     InternetSetOptionA(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
     InternetSetOptionA(hInternet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
     InternetSetOptionA(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
@@ -1262,7 +1260,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 InternetCloseHandle(hConnect);
                 break; 
              }
-        
+        }
         InternetCloseHandle(hRequest);
         InternetCloseHandle(hConnect);
         if (retry == maxRetries - 1) {
