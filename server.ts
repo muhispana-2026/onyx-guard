@@ -73,6 +73,38 @@ async function startServer() {
 
   const app = express();
   app.set('trust proxy', true);
+
+  app.get('/api/migrate-db', async (req, res) => {
+    try {
+      const { createPool } = await import('./src/db/index.ts');
+      const pool = createPool();
+      const queries = [
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_splash_screen boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_process_binding boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_api_hook_detection boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_heuristics boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_test_mode_block boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_watchdog boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS enable_payload_encryption boolean",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS blacklisted_programs text[]",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS license_expiration text",
+        "ALTER TABLE config ADD COLUMN IF NOT EXISTS multi_client_limit integer"
+      ];
+      let results = [];
+      for (const q of queries) {
+        try {
+          await pool.query(q);
+          results.push(`Success: ${q}`);
+        } catch (e: any) {
+          results.push(`Error on ${q}: ${e.message}`);
+        }
+      }
+      res.send(`<pre>Migration finished:\n${results.join('\n')}</pre>`);
+    } catch (e: any) {
+      res.send(`<pre>Fatal error: ${e.message}</pre>`);
+    }
+  });
+
   app.use(cors({ origin: "*" }));
 
   app.use((req, res, next) => {
@@ -99,7 +131,7 @@ async function startServer() {
       const allProjects = await db.select().from(projects);
       res.json(allProjects);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
   
@@ -120,7 +152,7 @@ async function startServer() {
       });
       res.json({ success: true, id, name });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -131,7 +163,7 @@ async function startServer() {
       await db.delete(projects).where(eq(projects.id, id));
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -142,7 +174,7 @@ async function startServer() {
       const confs = await db.select().from(config).where(eq(config.projectId, projectId));
       res.json(confs.length > 0 ? confs[0] : {});
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -159,7 +191,7 @@ async function startServer() {
       }
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -171,7 +203,7 @@ async function startServer() {
       accs.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
       res.json(accs);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -201,7 +233,7 @@ async function startServer() {
         res.status(404).json({ error: "Not found" });
       }
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -217,7 +249,7 @@ async function startServer() {
         res.status(404).json({ error: "Not found" });
       }
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -228,7 +260,7 @@ async function startServer() {
       const files = await db.select().from(fileRules).where(eq(fileRules.projectId, projectId));
       res.json(files);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -242,7 +274,7 @@ async function startServer() {
       });
       res.json({ success: true, id });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -258,7 +290,7 @@ async function startServer() {
         res.status(404).json({ error: "Not found" });
       }
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -269,7 +301,7 @@ async function startServer() {
       const data = await db.select().from(dumps).where(eq(dumps.projectId, projectId)).orderBy(desc(dumps.timestamp));
       res.json(data);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -284,7 +316,7 @@ async function startServer() {
       });
       res.json({ success: true, id });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -295,7 +327,7 @@ async function startServer() {
       const logData = await db.select().from(logs).where(eq(logs.projectId, projectId)).orderBy(desc(logs.timestamp)).limit(100);
       res.json(logData);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
@@ -305,7 +337,7 @@ async function startServer() {
       await db.delete(logs).where(eq(logs.projectId, projectId));
       res.json({ success: true });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ error: e.message, details: e.cause ? e.cause.message : (e.original ? e.original.message : String(e)) });
     }
   });
 
