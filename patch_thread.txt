@@ -1,6 +1,0 @@
-${enableDllScanner ? `        if(ScanForInjectedDLLs()) {
-            HandleFailure("DLL INJECTION DETECTED:\\nA malicious DLL module was found in memory.");
-        }` : ''}
-${enableMemoryScanner ? `        if(ScanMemorySignatures()) {
-            HandleFailure("MEMORY TAMPERING DETECTED:\\nKnown cheat signatures found in memory.");
-        }` : ''}

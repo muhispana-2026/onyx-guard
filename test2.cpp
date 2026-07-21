@@ -1,3 +1,0 @@
-/**
- * @license
- * SPDX-License-Identifier
