@@ -5,7 +5,7 @@
     "": {
       "name": "react-example",
       "dependencies": {
-        "@google/genai": "^2.4.0",
+        "@google/genai": "^2.12.0",
         "@tailwindcss/vite": "^4.1.14",
         "@types/spark-md5": "^3.0.5",
         "@vitejs/plugin-react": "^5.0.4",
@@ -32,7 +32,7 @@
         "drizzle-kit": "^0.31.10",
         "esbuild": "^0.25.0",
         "tailwindcss": "^4.1.14",
-        "tsx": "^4.21.0",
+        "tsx": "^4.23.1",
         "typescript": "~5.8.2",
         "vite": "^6.2.3",
       },

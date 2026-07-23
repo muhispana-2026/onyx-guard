@@ -188,8 +188,6 @@ export default function App() {
         .catch(console.error);
     };
     fetchDumps();
-    const interval = setInterval(fetchDumps, 5000);
-    return () => clearInterval(interval);
   }, [activeProjectId]);
 
   // Fetch real data on mount
@@ -494,6 +492,16 @@ export default function App() {
     }
   };
 
+  const handleClearDumps = async () => {
+    if (!window.confirm(language === 'es' ? '¿Seguro que deseas eliminar todos los volcados de memoria (dumps)?' : 'Are you sure you want to clear all dumps?')) return;
+    try {
+      await fetch('/api/dumps', { method: 'DELETE', headers: { 'x-project-id': activeProjectId } });
+      setDumps([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDownloadLogs = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
       + "Timestamp,Type,Username,Status,Reason,HWID,IP,Version\n"
@@ -671,6 +679,7 @@ ${usePch ? '#include "pch.h"' : ''}
 #include <wininet.h>
 #include <shellapi.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 #include <iostream>
 #include <fstream>  
 #include <string>
@@ -822,7 +831,7 @@ bool DetectSpeedHack() {
     QueryPerformanceCounter(&qpcStart);
     tickStart = GetTickCount();
 
-    Sleep(50); 
+    Sleep(250); 
 
     QueryPerformanceCounter(&qpcEnd);
     tickEnd = GetTickCount();
@@ -830,7 +839,7 @@ bool DetectSpeedHack() {
     double qpcDuration = (double)(qpcEnd.QuadPart - qpcStart.QuadPart) / qpcFreq.QuadPart;
     double tickDuration = (double)(tickEnd - tickStart) / 1000.0;
 
-    if (qpcDuration > 0 && (tickDuration / qpcDuration) > 1.30) {
+    if (qpcDuration > 0 && (tickDuration / qpcDuration) > 1.80) {
         WriteDebugLog("SPEEDHACK DETECTED", "System clock acceleration anomaly", 0, NULL, 0);
         return true;
     }
@@ -1276,7 +1285,105 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
     return isAuthorized;
 }
 
+
+void ReportViolation(const std::string& reason) {
+    HINTERNET hInternet = InternetOpenA("MuOnline_Client_Plugin", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) return;
+    
+    DWORD timeout = 5000;
+    DWORD secureProtocols = 0x00000800;
+    InternetSetOptionA(hInternet, 31, &secureProtocols, sizeof(secureProtocols));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
+    InternetSetOptionA(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
+
+    std::string host = "127.0.0.1";
+    std::string path = "/api/report";
+    size_t protocolPos = AUTH_SERVER_URL.find("://");
+    std::string urlWithoutProtocol = (protocolPos == std::string::npos) ? AUTH_SERVER_URL : AUTH_SERVER_URL.substr(protocolPos + 3);
+    size_t slashPos = urlWithoutProtocol.find("/");
+    if (slashPos != std::string::npos) {
+        host = urlWithoutProtocol.substr(0, slashPos);
+        path = urlWithoutProtocol.substr(slashPos);
+        if (path.back() == '/') path.pop_back();
+        if (path.find("/api/auth") != std::string::npos) {
+            path.replace(path.find("/api/auth"), 9, "/api/report");
+        } else if (path.find("/api/report") == std::string::npos) {
+            path += "/api/report";
+        }
+    } else {
+        host = urlWithoutProtocol;
+    }
+
+    INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
+    DWORD flags = INTERNET_FLAG_RELOAD;
+    if (AUTH_SERVER_URL.find("https://") == 0) {
+        port = INTERNET_DEFAULT_HTTPS_PORT;
+        flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
+    }
+
+    std::string hwid = GetHardwareID();
+    char compNameUser[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+    DWORD compNameLen = MAX_COMPUTERNAME_LENGTH + 1;
+    GetComputerNameA(compNameUser, &compNameLen);
+    std::string username = std::string(compNameUser);
+
+    std::stringstream json;
+    json << "{"
+         << "\\\"username\\\": \\\"" << JsonEscape(username) << "\\\","
+         << "\\\"hwid\\\": \\\"" << JsonEscape(hwid) << "\\\","
+         << "\\\"clientVersion\\\": \\\"" << JsonEscape(CLIENT_VERSION) << "\\\","
+         << "\\\"secretToken\\\": \\\"" << JsonEscape(SECRET_TOKEN) << "\\\","
+         << "\\\"reason\\\": \\\"" << JsonEscape(reason) << "\\\""
+         << "}";
+
+    std::string payload = json.str();
+    std::string headers = "Content-Type: application/json\r\n";
+
+    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+    if (hConnect) {
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, "POST", path.c_str(), NULL, NULL, NULL, flags, 0);
+        if (hRequest) {
+            DWORD dwFlags = 0;
+            DWORD dwBuffLen = sizeof(dwFlags);
+            if (InternetQueryOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, &dwBuffLen)) {
+                dwFlags |= SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_REVOCATION | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_WRONG_USAGE;
+                InternetSetOptionA(hRequest, INTERNET_OPTION_SECURITY_FLAGS, &dwFlags, sizeof(dwFlags));
+            }
+            HttpSendRequestA(hRequest, headers.c_str(), headers.length(), (LPVOID)payload.c_str(), payload.length());
+            InternetCloseHandle(hRequest);
+        }
+        InternetCloseHandle(hConnect);
+    }
+    InternetCloseHandle(hInternet);
+}
+
+
+void SuspendAllOtherThreads() {
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (hThreadSnap != INVALID_HANDLE_VALUE) {
+        THREADENTRY32 te32;
+        te32.dwSize = sizeof(THREADENTRY32);
+        if (Thread32First(hThreadSnap, &te32)) {
+            DWORD currentProcessId = GetCurrentProcessId();
+            DWORD currentThreadId = GetCurrentThreadId();
+            do {
+                if (te32.th32OwnerProcessID == currentProcessId && te32.th32ThreadID != currentThreadId) {
+                    HANDLE hThread = OpenThread(THREAD_SUSPEND_RESUME, FALSE, te32.th32ThreadID);
+                    if (hThread) {
+                        SuspendThread(hThread);
+                        CloseHandle(hThread);
+                    }
+                }
+            } while (Thread32Next(hThreadSnap, &te32));
+        }
+        CloseHandle(hThreadSnap);
+    }
+}
+
 void HandleFailure(const std::string& message) {
+    SuspendAllOtherThreads();
+    ReportViolation(message);
     EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
         DWORD pid = 0;
         GetWindowThreadProcessId(hwnd, &pid);
@@ -3260,6 +3367,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <p className="text-xs text-slate-400 mt-1">
                       {t.dashboard.hackerDumpsDesc}
                     </p>
+                  </div>
+                  <div>
+                    <button 
+                      onClick={handleClearDumps} 
+                      className="bg-red-950/40 hover:bg-red-900/60 text-red-400 px-3 py-1.5 rounded transition text-sm flex items-center gap-1 border border-red-900/50"
+                    >
+                      <Trash2 className="w-4 h-4" /> {language === 'es' ? 'Limpiar Todos' : 'Clear All'}
+                    </button>
                   </div>
                 </div>
 

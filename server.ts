@@ -15,11 +15,11 @@ async function seedData() {
     const { createPool } = await import('./src/db/index.ts');
     const pool = createPool();
     await pool.query(`
-      CREATE TABLE  projects (
+      CREATE TABLE IF NOT EXISTS  projects (
         id text PRIMARY KEY NOT NULL,
         name text NOT NULL
       );
-      CREATE TABLE  config (
+      CREATE TABLE IF NOT EXISTS  config (
         project_id text PRIMARY KEY NOT NULL,
         server_url text NOT NULL,
         client_version text NOT NULL,
@@ -44,7 +44,7 @@ async function seedData() {
         blacklisted_programs text[],
         license_expiration text
       );
-      CREATE TABLE  accounts (
+      CREATE TABLE IF NOT EXISTS  accounts (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         username text NOT NULL,
@@ -57,7 +57,7 @@ async function seedData() {
         hwid_reset_count integer DEFAULT 0,
         notes text
       );
-      CREATE TABLE  file_rules (
+      CREATE TABLE IF NOT EXISTS  file_rules (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         file_path text NOT NULL,
@@ -65,7 +65,7 @@ async function seedData() {
         importance text DEFAULT 'HIGH' NOT NULL,
         file_size text DEFAULT 'Unknown'
       );
-      CREATE TABLE  dumps (
+      CREATE TABLE IF NOT EXISTS  dumps (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         name text NOT NULL,
@@ -73,7 +73,7 @@ async function seedData() {
         raw_rule text NOT NULL,
         timestamp text NOT NULL
       );
-      CREATE TABLE  logs (
+      CREATE TABLE IF NOT EXISTS  logs (
         id text PRIMARY KEY NOT NULL,
         project_id text NOT NULL,
         type text NOT NULL,
@@ -109,17 +109,7 @@ seedData();
 
 
 async function startServer() {
-  try {
-    const { sql } = await import('drizzle-orm');
-    await db.execute(sql`ALTER TABLE logs ADD COLUMN username text;`);
-    await db.execute(sql`ALTER TABLE logs ADD COLUMN  hwid text;`);
-    await db.execute(sql`ALTER TABLE logs ADD COLUMN  ip text;`);
-    await db.execute(sql`ALTER TABLE logs ADD COLUMN  client_version text;`);
-    await db.execute(sql`ALTER TABLE logs ADD COLUMN  reason text;`);
-    console.log('Database altered successfully');
-  } catch (e) {
-    console.error('Failed to alter database', e);
-  }
+  
 
   
   const originalError = console.error;
@@ -380,6 +370,16 @@ async function startServer() {
   });
 
   // -- Logs --
+
+  app.delete("/api/dumps", async (req, res) => {
+    try {
+      const projectId = getProjectId(req);
+      await db.delete(dumps).where(eq(dumps.projectId, projectId));
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   app.delete("/api/dumps/:id", async (req, res) => {
     try {
