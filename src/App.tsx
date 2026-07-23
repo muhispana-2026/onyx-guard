@@ -585,7 +585,6 @@ export default function App() {
             ip: simIp,
             clientVersion: simClientVersion,
             fileModified: simModifiedFile,
-            secretToken: securityToken,
             secretToken: securityToken
           })
         });
@@ -1184,12 +1183,19 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
         host = urlWithoutProtocol;
     }
 
+
     INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
     DWORD flags = INTERNET_FLAG_RELOAD;
     if (AUTH_SERVER_URL.find("https://") == 0) {
         port = INTERNET_DEFAULT_HTTPS_PORT;
         flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
     }
+    size_t colonPos = host.find(":");
+    if (colonPos != std::string::npos) {
+        try { port = std::stoi(host.substr(colonPos + 1)); } catch(...) {}
+        host = host.substr(0, colonPos);
+    }
+
 
     std::stringstream json;
     json << "{"
@@ -1316,12 +1322,19 @@ void ReportViolation(const std::string& reason) {
         host = urlWithoutProtocol;
     }
 
+
     INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
     DWORD flags = INTERNET_FLAG_RELOAD;
     if (AUTH_SERVER_URL.find("https://") == 0) {
         port = INTERNET_DEFAULT_HTTPS_PORT;
         flags |= INTERNET_FLAG_SECURE | INTERNET_FLAG_IGNORE_CERT_CN_INVALID | INTERNET_FLAG_IGNORE_CERT_DATE_INVALID;
     }
+    size_t colonPos = host.find(":");
+    if (colonPos != std::string::npos) {
+        try { port = std::stoi(host.substr(colonPos + 1)); } catch(...) {}
+        host = host.substr(0, colonPos);
+    }
+
 
     std::string hwid = GetHardwareID();
     char compNameUser[MAX_COMPUTERNAME_LENGTH + 1] = {0};
@@ -1713,10 +1726,15 @@ void FetchDynamicLists() {
             host = host.substr(0, slashPos);
         }
     }
-
-    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), 
-        AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
-        NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+    
+    INTERNET_PORT cPort = AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+    size_t cColonPos = host.find(":");
+    if (cColonPos != std::string::npos) {
+        try { cPort = std::stoi(host.substr(cColonPos + 1)); } catch(...) {}
+        host = host.substr(0, cColonPos);
+    }
+    
+    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), cPort, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
 
     if (hConnect) {
         DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
@@ -1794,10 +1812,7 @@ void FetchDynamicLists() {
             }
             InternetCloseHandle(hRequest);
         }
-        InternetConnectA(hInternet, host.c_str(), 
-            AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
-            NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-    }
+}
     InternetCloseHandle(hInternet);
 }
 
@@ -1932,9 +1947,13 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
                     }
                 }
                 
-                HINTERNET hConn = InternetConnectA(hNet, bHost.c_str(), 
-                    AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
-                    NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+                INTERNET_PORT bPort = AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+                size_t bColonPos = bHost.find(":");
+                if (bColonPos != std::string::npos) {
+                    try { bPort = std::stoi(bHost.substr(bColonPos + 1)); } catch(...) {}
+                    bHost = bHost.substr(0, bColonPos);
+                }
+                HINTERNET hConn = InternetConnectA(hNet, bHost.c_str(), bPort, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
                 if (hConn) {
                     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
                     if (AUTH_SERVER_URL.find("https://") != std::string::npos) flags |= INTERNET_FLAG_SECURE;
