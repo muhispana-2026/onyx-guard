@@ -451,8 +451,10 @@ async function startServer() {
   app.post("/api/heartbeat", async (req, res) => {
     try {
       const { username, hwid, secretToken } = req.body;
+      console.log("Checking token:", secretToken);
       const conf = await db.select().from(config).where(eq(config.securityToken, secretToken));
-      if (conf.length === 0) return res.status(401).json({ success: false });
+      console.log("Conf length:", conf.length);
+      if (conf.length === 0) return res.status(401).json({ success: false, action: "EXIT", message: "Invalid Security Token or Project Not Found." });
       const projectId = conf[0].projectId;
       
       if (username) {
@@ -481,8 +483,10 @@ async function startServer() {
       let ip = req.body.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
       if (Array.isArray(ip)) ip = ip[0];
       
+      console.log("Checking token:", secretToken);
       const conf = await db.select().from(config).where(eq(config.securityToken, secretToken));
-      if (conf.length === 0) return res.status(401).json({ success: false });
+      console.log("Conf length:", conf.length);
+      if (conf.length === 0) return res.status(401).json({ success: false, action: "EXIT", message: "Invalid Security Token or Project Not Found." });
       const projectId = conf[0].projectId;
       const timestamp = new Date().toISOString();
 

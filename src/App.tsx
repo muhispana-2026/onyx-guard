@@ -585,6 +585,7 @@ export default function App() {
             ip: simIp,
             clientVersion: simClientVersion,
             fileModified: simModifiedFile,
+            secretToken: securityToken,
             secretToken: securityToken
           })
         });
@@ -1382,7 +1383,6 @@ void SuspendAllOtherThreads() {
 }
 
 void HandleFailure(const std::string& message) {
-    SuspendAllOtherThreads();
     ReportViolation(message);
     EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
         DWORD pid = 0;
