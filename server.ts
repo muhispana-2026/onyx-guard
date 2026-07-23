@@ -470,8 +470,7 @@ async function startServer() {
           }).where(eq(accounts.id, account.id));
         }
       }
-
-      res.json({ success: true });
+      res.json({ success: true, speedhackSensitivity: conf[0].speedhackSensitivity || "1.80" });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
@@ -576,7 +575,8 @@ async function startServer() {
             success: true,
             action: "CONTINUE",
             message: `${authIdentifier}, tu equipo ha sido registrado en Onyx Guard. Disfruta del juego.`,
-            sessionToken: Math.random().toString(36).substring(2, 15)
+            sessionToken: Math.random().toString(36).substring(2, 15),
+            speedhackSensitivity: conf[0].speedhackSensitivity || "1.80"
           });
         }
       }
@@ -584,7 +584,8 @@ async function startServer() {
         success: true,
         action: "CONTINUE",
         message: authIdentifier ? `Bienvenido nuevamente ${authIdentifier}, disfruta del juego.` : "Authentication successful.",
-        sessionToken: Math.random().toString(36).substring(2, 15)
+        sessionToken: Math.random().toString(36).substring(2, 15),
+        speedhackSensitivity: conf[0].speedhackSensitivity || "1.80"
       });
     } catch (e: any) {
       res.status(500).json({ success: false, action: "EXIT", message: "Internal server error: " + e.message });

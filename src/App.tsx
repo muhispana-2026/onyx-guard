@@ -146,6 +146,7 @@ export default function App() {
   const [enableWatchdog, setEnableWatchdog] = useState(true);
   const [enablePayloadEncryption, setEnablePayloadEncryption] = useState(true);
   const [blacklistedProgramsText, setBlacklistedProgramsText] = useState<string>('Cheat Engine, AutoClicker, SpeedHack, WPE PRO, OllyDbg, Wireshark');
+  const [speedhackSensitivity, setSpeedhackSensitivity] = useState<string>('1.80');
   const [licenseExpiration, setLicenseExpiration] = useState('');
   const [actionOnFailure, setActionOnFailure] = useState<'EXIT' | 'MSG_BOX' | 'CRASH'>('MSG_BOX');
   const [selectedLanguage, setSelectedLanguage] = useState<'cpp' | 'csharp'>('cpp');
@@ -199,7 +200,7 @@ export default function App() {
     fetch('/api/config', { headers })
       .then(res => res.json())
       .then(data => {
-        if (data.serverUrl && !data.serverUrl.includes('onyx-guard')) { setServerUrl(data.serverUrl); } else { setServerUrl(window.location.origin + '/api/auth'); }
+        if (data.serverUrl) { setServerUrl(data.serverUrl); } else { setServerUrl(window.location.origin + '/api/auth'); }
         if (data.securityToken) setSecurityToken(data.securityToken);
         if (data.clientVersion) setClientVersion(data.clientVersion);
         if (data.actionOnFailure) setActionOnFailure(data.actionOnFailure);
@@ -250,12 +251,12 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-project-id': activeProjectId },
         body: JSON.stringify({
-          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms: blacklistedProgramsText.split(',').map(s => s.trim()).filter(Boolean), licenseExpiration
+          serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedPrograms: blacklistedProgramsText.split(',').map(s => s.trim()).filter(Boolean), licenseExpiration, speedhackSensitivity
         })
       }).catch(console.error);
     }, 1000);
     return () => clearTimeout(timeout);
-  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedProgramsText, licenseExpiration, activeProjectId, loadedProjectId]);
+  }, [serverUrl, securityToken, clientVersion, actionOnFailure, enableHwidCheck, enableFileCheck, enableRealtimeMonitor, enableMultiClientBlock, multiClientLimit, enableAntiMacro, enableAntiDebug, enableDllScanner, enableMemoryScanner, enableProcessBinding, enablePayloadEncryption, enableApiHookDetection, enableHeuristics, enableTestModeBlock, enableWatchdog, blacklistedProgramsText, licenseExpiration, speedhackSensitivity, activeProjectId, loadedProjectId]);
 
   // Sandbox Client Simulation State
   const [simUsername, setSimUsername] = useState('RageFighter');
@@ -707,6 +708,7 @@ HWND g_trayHwnd = NULL;
 NOTIFYICONDATAA g_nid = { 0 };
 bool g_trayIconAdded = false;
 std::string g_startupMessage = "";
+double g_speedhackSensitivity = 1.80;
 
 // Definición para el Hook de GetCommandLineA (Punto de control temprano fuera de DllMain)
 typedef LPSTR(WINAPI* PFN_GetCommandLineA)();
@@ -839,7 +841,7 @@ bool DetectSpeedHack() {
     double qpcDuration = (double)(qpcEnd.QuadPart - qpcStart.QuadPart) / qpcFreq.QuadPart;
     double tickDuration = (double)(tickEnd - tickStart) / 1000.0;
 
-    if (qpcDuration > 0 && (tickDuration / qpcDuration) > 1.80) {
+    if (qpcDuration > 0 && (tickDuration / qpcDuration) > g_speedhackSensitivity) {
         WriteDebugLog("SPEEDHACK DETECTED", "System clock acceleration anomaly", 0, NULL, 0);
         return true;
     }
@@ -1258,8 +1260,19 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
                     size_t msgEnd = responseString.find("\\\"", msgStart);
+
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
+                    }
+                }
+                size_t sensStart = responseString.find("\\\"speedhackSensitivity\\\":\\\"");
+                if (sensStart != std::string::npos) {
+                    sensStart += 24; // length of "speedhackSensitivity":"
+                    size_t sensEnd = responseString.find("\\\"", sensStart);
+                    if (sensEnd != std::string::npos) {
+                        try {
+                            g_speedhackSensitivity = std::stod(responseString.substr(sensStart, sensEnd - sensStart));
+                        } catch (...) {}
                     }
                 }
                 InternetCloseHandle(hRequest);
@@ -1271,8 +1284,19 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
                     size_t msgEnd = responseString.find("\\\"", msgStart);
+
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
+                    }
+                }
+                size_t sensStart = responseString.find("\\\"speedhackSensitivity\\\":\\\"");
+                if (sensStart != std::string::npos) {
+                    sensStart += 24; // length of "speedhackSensitivity":"
+                    size_t sensEnd = responseString.find("\\\"", sensStart);
+                    if (sensEnd != std::string::npos) {
+                        try {
+                            g_speedhackSensitivity = std::stod(responseString.substr(sensStart, sensEnd - sensStart));
+                        } catch (...) {}
                     }
                 }
                 InternetCloseHandle(hRequest);
@@ -1912,13 +1936,21 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
         return 1;
     }
     
+
     if (g_startupMessage.empty()) {
         g_startupMessage = "Welcome to Onyx Guard!";
+    }
+    
+    // Esperar a que el hilo del Tray Icon se inicialice si aún no lo ha hecho
+    for (int i = 0; i < 20; i++) {
+        if (g_trayHwnd) break;
+        Sleep(100);
     }
     
     if (g_trayHwnd) {
         PostMessageA(g_trayHwnd, WM_USER + 2, 0, 0);
     }
+
     
     int tickCount = 0;
     while(true) {
@@ -1961,7 +1993,27 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
                     if (hReq) {
                         std::string hJson = "{\\\"username\\\":\\\"" + JsonEscape(accountName) + "\\\",\\\"hwid\\\":\\\"" + JsonEscape(hwid) + "\\\",\\\"secretToken\\\":\\\"" + JsonEscape(SECRET_TOKEN) + "\\\"}";
                         std::string hHeaders = "Content-Type: application/json\\r\\n";
-                        HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length());
+
+                        if (HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length())) {
+                            char buffer[512];
+                            DWORD bytesRead = 0;
+                            std::string responseString = "";
+                            while (InternetReadFile(hReq, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+                                buffer[bytesRead] = '\\0';
+                                responseString += buffer;
+                            }
+                            
+                            size_t sensStart = responseString.find("\\\"speedhackSensitivity\\\":\\\"");
+                            if (sensStart != std::string::npos) {
+                                sensStart += 24;
+                                size_t sensEnd = responseString.find("\\\"", sensStart);
+                                if (sensEnd != std::string::npos) {
+                                    try {
+                                        g_speedhackSensitivity = std::stod(responseString.substr(sensStart, sensEnd - sensStart));
+                                    } catch (...) {}
+                                }
+                            }
+                        }
                         InternetCloseHandle(hReq);
                     }
                     InternetCloseHandle(hConn);
@@ -2868,6 +2920,25 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       </p>
                     </div>
                   )}
+
+
+                  <div className="mt-4 pt-4 border-t border-slate-800">
+                    <label className="block text-slate-400 font-mono mb-1 text-[10px]">
+                      {language === 'es' ? 'SENSIBILIDAD ANTI-SPEEDHACK:' : 'ANTI-SPEEDHACK SENSITIVITY:'}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text"
+                        value={speedhackSensitivity}
+                        onChange={(e) => setSpeedhackSensitivity(e.target.value)}
+                        className="w-16 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-amber-400 font-mono focus:border-amber-500 focus:outline-none text-xs text-center"
+                        placeholder="1.80"
+                      />
+                      <span className="text-[10px] text-slate-500">
+                        {language === 'es' ? '(Umbral de aceleración, por defecto 1.80. Menor es más estricto)' : '(Acceleration threshold, default 1.80. Lower is stricter)'}
+                      </span>
+                    </div>
+                  </div>
 
                   {/* Advanced Security */}
                   <div className="mt-4 pt-4 border-t border-slate-800">

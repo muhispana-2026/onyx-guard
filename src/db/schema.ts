@@ -29,6 +29,7 @@ export const config = pgTable('config', {
   enablePayloadEncryption: boolean('enable_payload_encryption'),
   blacklistedPrograms: text('blacklisted_programs').array(),
   licenseExpiration: text('license_expiration'),
+  speedhackSensitivity: text('speedhack_sensitivity'),
 });
 
 export const accounts = pgTable('accounts', {

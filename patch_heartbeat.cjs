@@ -1,56 +1,29 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/App.tsx', 'utf-8');
+let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-// Include a heartbeat in the integrity check loop
-const checkStr = `        if (tickCount % 10 == 0) { 
-            FetchDynamicLists();
-        }`;
-        
-const newCheckStr = `        if (tickCount % 10 == 0) { 
-            FetchDynamicLists();
-        }
-        if (tickCount % 20 == 0) {
-            // Heartbeat
-            HINTERNET hNet = InternetOpenA("MuOnline", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
-            if (hNet) {
-                std::string bHost = "127.0.0.1";
-                std::string bPath = "/api/heartbeat";
-                size_t pPos = AUTH_SERVER_URL.find("://");
-                if (pPos != std::string::npos) {
-                    bHost = AUTH_SERVER_URL.substr(pPos + 3);
-                    size_t sPos = bHost.find("/");
-                    if (sPos != std::string::npos) {
-                        bPath = bHost.substr(sPos);
-                        bHost = bHost.substr(0, sPos);
-                        if (bPath.back() == '/') bPath.pop_back();
-                        if (bPath.length() >= 9 && bPath.substr(bPath.length() - 9) == "/api/auth") {
-                            bPath = bPath.substr(0, bPath.length() - 9) + "/api/heartbeat";
-                        } else {
-                            bPath = bPath + "/api/heartbeat";
+const replacement = `
+                        if (HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length())) {
+                            char buffer[512];
+                            DWORD bytesRead = 0;
+                            std::string responseString = "";
+                            while (InternetReadFile(hReq, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) {
+                                buffer[bytesRead] = '\\0';
+                                responseString += buffer;
+                            }
+                            
+                            size_t sensStart = responseString.find("\\"speedhackSensitivity\\":\\"");
+                            if (sensStart != std::string::npos) {
+                                sensStart += 24;
+                                size_t sensEnd = responseString.find("\\"", sensStart);
+                                if (sensEnd != std::string::npos) {
+                                    try {
+                                        g_speedhackSensitivity = std::stod(responseString.substr(sensStart, sensEnd - sensStart));
+                                    } catch (...) {}
+                                }
+                            }
                         }
-                    }
-                }
-                
-                HINTERNET hConn = InternetConnectA(hNet, bHost.c_str(), 
-                    AUTH_SERVER_URL.find("https://") != std::string::npos ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT, 
-                    NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
-                if (hConn) {
-                    DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
-                    if (AUTH_SERVER_URL.find("https://") != std::string::npos) flags |= INTERNET_FLAG_SECURE;
-                    HINTERNET hReq = HttpOpenRequestA(hConn, "POST", bPath.c_str(), NULL, NULL, NULL, flags, 0);
-                    if (hReq) {
-                        std::string hJson = "{\\\"username\\\":\\\"" + JsonEscape(accountName) + "\\\",\\\"hwid\\\":\\\"" + JsonEscape(hwid) + "\\\",\\\"secretToken\\\":\\\"" + JsonEscape(SECRET_TOKEN) + "\\\"}";
-                        std::string hHeaders = "Content-Type: application/json\\r\\n";
-                        HttpSendRequestA(hReq, hHeaders.c_str(), hHeaders.length(), (LPVOID)hJson.c_str(), hJson.length());
-                        InternetCloseHandle(hReq);
-                    }
-                    InternetCloseHandle(hConn);
-                }
-                InternetCloseHandle(hNet);
-            }
-        }`;
+                        InternetCloseHandle(hReq);`;
 
-content = content.replace(checkStr, newCheckStr);
+code = code.replace(/                        HttpSendRequestA\(hReq, hHeaders\.c_str\(\), hHeaders\.length\(\), \(LPVOID\)hJson\.c_str\(\), hJson\.length\(\)\);\s*InternetCloseHandle\(hReq\);/g, replacement);
 
-fs.writeFileSync('src/App.tsx', content);
-console.log("Patched UI C++ generator for heartbeat");
+fs.writeFileSync('src/App.tsx', code);
