@@ -1,8 +1,8 @@
 const { Pool } = require('pg');
 const pool = new Pool({ 
   host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
+  user: process.env.SQL_ADMIN_USER,
+  password: process.env.SQL_ADMIN_PASSWORD,
   database: process.env.SQL_DB_NAME
 });
 pool.query("SELECT * FROM config LIMIT 1;", (err, res) => {

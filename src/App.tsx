@@ -221,6 +221,7 @@ export default function App() {
         if (data.enableWatchdog !== undefined) setEnableWatchdog(data.enableWatchdog);
         if (data.enablePayloadEncryption !== undefined) setEnablePayloadEncryption(data.enablePayloadEncryption);
         if (data.blacklistedPrograms !== undefined) setBlacklistedProgramsText((data.blacklistedPrograms || []).join(', '));
+        if (data.speedhackSensitivity !== undefined) setSpeedhackSensitivity(data.speedhackSensitivity);
         if (data.licenseExpiration !== undefined) setLicenseExpiration(data.licenseExpiration);
         
         setLoadedProjectId(activeProjectId);

@@ -1,2 +1,2 @@
-const s = `buffer[bytesRead] = '\\0';`;
-console.log(JSON.stringify(s));
+const str = `buffer[bytesRead] = '\\0';`;
+console.log(str);
