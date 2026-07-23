@@ -1338,7 +1338,7 @@ void ReportViolation(const std::string& reason) {
          << "}";
 
     std::string payload = json.str();
-    std::string headers = "Content-Type: application/json\r\n";
+    std::string headers = "Content-Type: application/json\\r\\n";
 
     HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
     if (hConnect) {
@@ -2766,7 +2766,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
                       type="checkbox" 
-                      checked={enableHwidCheck}
+                      checked={!!enableHwidCheck}
                       onChange={(e) => setEnableHwidCheck(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2776,7 +2776,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
                       type="checkbox" 
-                      checked={enableFileCheck}
+                      checked={!!enableFileCheck}
                       onChange={(e) => setEnableFileCheck(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2785,7 +2785,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
                       type="checkbox" 
-                      checked={enableRealtimeMonitor}
+                      checked={!!enableRealtimeMonitor}
                       onChange={(e) => setEnableRealtimeMonitor(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2796,7 +2796,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
                       type="checkbox" 
-                      checked={enableMultiClientBlock}
+                      checked={!!enableMultiClientBlock}
                       onChange={(e) => setEnableMultiClientBlock(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2805,7 +2805,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                     <input 
                       type="checkbox" 
-                      checked={enableSplashScreen}
+                      checked={!!enableSplashScreen}
                       onChange={(e) => setEnableSplashScreen(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2828,7 +2828,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                   <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                     <input 
                       type="checkbox" 
-                      checked={enableAntiMacro}
+                      checked={!!enableAntiMacro}
                       onChange={(e) => setEnableAntiMacro(e.target.checked)}
                       className="accent-amber-500"
                     />
@@ -2864,7 +2864,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                         <input 
                           type="checkbox" 
-                          checked={usePch}
+                          checked={!!usePch}
                           onChange={(e) => setUsePch(e.target.checked)}
                           className="accent-amber-500"
                         />
@@ -2876,7 +2876,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableAntiDebug}
+                        checked={!!enableAntiDebug}
                         onChange={(e) => setEnableAntiDebug(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2887,7 +2887,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                       <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
                         <input 
                           type="checkbox" 
-                          checked={enableProcessBinding}
+                          checked={!!enableProcessBinding}
                           onChange={(e) => setEnableProcessBinding(e.target.checked)}
                           className="accent-amber-500"
                         />
@@ -2907,7 +2907,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enablePayloadEncryption}
+                        checked={!!enablePayloadEncryption}
                         onChange={(e) => setEnablePayloadEncryption(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2916,7 +2916,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableDllScanner}
+                        checked={!!enableDllScanner}
                         onChange={(e) => setEnableDllScanner(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2925,7 +2925,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableApiHookDetection}
+                        checked={!!enableApiHookDetection}
                         onChange={(e) => setEnableApiHookDetection(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2934,7 +2934,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableHeuristics}
+                        checked={!!enableHeuristics}
                         onChange={(e) => setEnableHeuristics(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2943,7 +2943,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableTestModeBlock}
+                        checked={!!enableTestModeBlock}
                         onChange={(e) => setEnableTestModeBlock(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2952,7 +2952,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableWatchdog}
+                        checked={!!enableWatchdog}
                         onChange={(e) => setEnableWatchdog(e.target.checked)}
                         className="accent-amber-500"
                       />
@@ -2961,7 +2961,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 mt-1">
                       <input 
                         type="checkbox" 
-                        checked={enableMemoryScanner}
+                        checked={!!enableMemoryScanner}
                         onChange={(e) => setEnableMemoryScanner(e.target.checked)}
                         className="accent-amber-500"
                       />
