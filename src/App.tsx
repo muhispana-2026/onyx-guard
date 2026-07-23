@@ -1638,7 +1638,7 @@ DWORD WINAPI SplashThread(LPVOID lpParam) {
 }
 
 void ShowSplashScreen() {
-${enableSplashScreen ? '    CreateThread(NULL, 0, SplashThread, NULL, 0, NULL);' : ''}
+${enableSplashScreen ? '    CreateThread(NULL, 0, SplashThread, NULL, 0, NULL);' : '    if (g_hSplashEvent) SetEvent(g_hSplashEvent);'}
 }
 
 DWORD WINAPI DirectoryMonitorThread(LPVOID lpParam) {
