@@ -2,7 +2,7 @@
 #include <string>
 
 int main() {
-    std::string responseString = "{\"success\":true,\"action\":\"CONTINUE\",\"message\":\"Bienvenido, tu equipo ha sido registrado en nuestro sistema. Disfrute del juego.\",\"sessionToken\":\"8vnydv5zoe8\",\"speedhackSensitivity\":\"1.80\"}";
+    std::string responseString = "{\"success\":true,\"action\":\"CONTINUE\",\"message\":\"Bienvenido, test, tu equipo ha sido registrado en nuestro sistema. Disfrute del juego.\",\"sessionToken\":\"rg9n5rcgyap\",\"speedhackSensitivity\":\"1.80\"}";
     std::string g_startupMessage = "DEFAULT";
 
     size_t msgStart = responseString.find("\"message\":\"");

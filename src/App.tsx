@@ -1260,7 +1260,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
@@ -1284,7 +1284,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
