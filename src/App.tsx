@@ -1260,7 +1260,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
@@ -1284,7 +1284,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = responseString.find("\\\"", msgStart);
+                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
@@ -1928,6 +1928,13 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
     }
     std::string accountName = compNameUser; 
     
+    // Esperar a que el hilo del Tray Icon se inicialice si aún no lo ha hecho
+    for (int i = 0; i < 20; i++) {
+        if (g_trayHwnd) break;
+        Sleep(100);
+    }
+
+
     bool status = PerformHandshake(accountName, hwid, "");
     
     if (!status) {
@@ -1942,11 +1949,7 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
         g_startupMessage = "Welcome to Onyx Guard!";
     }
     
-    // Esperar a que el hilo del Tray Icon se inicialice si aún no lo ha hecho
-    for (int i = 0; i < 20; i++) {
-        if (g_trayHwnd) break;
-        Sleep(100);
-    }
+
     
     if (g_trayHwnd) {
         PostMessageA(g_trayHwnd, WM_USER + 2, 0, 0);
