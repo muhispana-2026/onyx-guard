@@ -1,12 +1,12 @@
-import { pgTable, text, boolean, integer } from 'drizzle-orm/pg-core';
+import { mysqlTable, text, varchar, boolean, int, json } from 'drizzle-orm/mysql-core';
 
-export const projects = pgTable('projects', {
-  id: text('id').primaryKey(),
+export const projects = mysqlTable('projects', {
+  id: varchar('id', { length: 255 }).primaryKey(),
   name: text('name').notNull(),
 });
 
-export const config = pgTable('config', {
-  projectId: text('project_id').primaryKey(),
+export const config = mysqlTable('config', {
+  projectId: varchar('project_id', { length: 255 }).primaryKey(),
   serverUrl: text('server_url'),
   clientVersion: text('client_version'),
   securityToken: text('security_token'),
@@ -15,7 +15,7 @@ export const config = pgTable('config', {
   enableFileCheck: boolean('enable_file_check'),
   enableRealtimeMonitor: boolean('enable_realtime_monitor'),
   enableMultiClientBlock: boolean('enable_multi_client_block'),
-  multiClientLimit: integer('multi_client_limit'),
+  multiClientLimit: int('multi_client_limit'),
   enableAntiMacro: boolean('enable_anti_macro'),
   enableAntiDebug: boolean('enable_anti_debug'),
   enableDllScanner: boolean('enable_dll_scanner'),
@@ -27,14 +27,14 @@ export const config = pgTable('config', {
   enableTestModeBlock: boolean('enable_test_mode_block'),
   enableWatchdog: boolean('enable_watchdog'),
   enablePayloadEncryption: boolean('enable_payload_encryption'),
-  blacklistedPrograms: text('blacklisted_programs').array(),
+  blacklistedPrograms: json('blacklisted_programs'),
   licenseExpiration: text('license_expiration'),
   speedhackSensitivity: text('speedhack_sensitivity'),
 });
 
-export const accounts = pgTable('accounts', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id').notNull(),
+export const accounts = mysqlTable('accounts', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
   username: text('username'),
   hwid: text('hwid'),
   status: text('status'),
@@ -44,18 +44,18 @@ export const accounts = pgTable('accounts', {
   lastHeartbeat: text('last_heartbeat'),
 });
 
-export const fileRules = pgTable('file_rules', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id').notNull(),
+export const fileRules = mysqlTable('file_rules', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
   filePath: text('file_path'),
   expectedHash: text('expected_hash'),
   importance: text('importance'),
   fileSize: text('file_size'),
 });
 
-export const logs = pgTable('logs', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id').notNull(),
+export const logs = mysqlTable('logs', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
   type: text('type'),
   message: text('message'),
   timestamp: text('timestamp'),
@@ -66,9 +66,9 @@ export const logs = pgTable('logs', {
   reason: text('reason'),
 });
 
-export const dumps = pgTable('dumps', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id').notNull(),
+export const dumps = mysqlTable('dumps', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  projectId: varchar('project_id', { length: 255 }).notNull(),
   name: text('name'),
   desc: text('desc'),
   timestamp: text('timestamp'),
