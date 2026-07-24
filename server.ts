@@ -119,7 +119,11 @@ async function startServer() {
     originalError(...args);
   };
 
-  const app = express();
+  
+const dumplistCache = new Map<string, { data: string, timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const app = express();
   app.set('trust proxy', true);
 
   app.get('/api/migrate-db', async (req, res) => {
@@ -421,6 +425,11 @@ async function startServer() {
   app.get("/api/dumplist", async (req, res) => {
     try {
       const projectId = req.query.projectId as string || "DEFAULT";
+      const now = Date.now();
+      if (dumplistCache.has(projectId) && (now - dumplistCache.get(projectId)!.timestamp) < CACHE_TTL) {
+        return res.type('text/plain').send(dumplistCache.get(projectId)!.data);
+      }
+
       
       const configData = await db.select().from(config).where(eq(config.projectId, projectId));
       let conf: any = {};
@@ -441,7 +450,10 @@ async function startServer() {
         }
       }
       
+      
+      dumplistCache.set(projectId, { data: out, timestamp: now });
       res.type('text/plain').send(out);
+
     } catch(e) {
       res.status(500).send("ERROR");
     }

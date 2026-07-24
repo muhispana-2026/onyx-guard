@@ -1260,7 +1260,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
+                    size_t msgEnd = responseString.find("\\\"", msgStart);
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
@@ -1284,7 +1284,7 @@ bool PerformHandshake(const std::string& username, const std::string& hwid, cons
                 size_t msgStart = responseString.find("\\\"message\\\":\\\"");
                 if (msgStart != std::string::npos) {
                     msgStart += 11;
-                    size_t msgEnd = msgStart; while ((msgEnd = responseString.find("\\\"", msgEnd)) != std::string::npos) { if (msgEnd > 0 && responseString[msgEnd - 1] != '\\\\') break; msgEnd++; }
+                    size_t msgEnd = responseString.find("\\\"", msgStart);
 
                     if (msgEnd != std::string::npos) {
                         g_startupMessage = responseString.substr(msgStart, msgEnd - msgStart);
@@ -1958,10 +1958,10 @@ ${enableTestModeBlock ? `    if (IsTestModeEnabled()) {
     
     int tickCount = 0;
     while(true) {
-        if (tickCount % 10 == 0) { 
+        if (tickCount % 100 == 0) { // Every 5 minutes 
             FetchDynamicLists();
         }
-        if (tickCount % 20 == 0) {
+        if (tickCount % 60 == 0) { // Every 3 minutes
             // Heartbeat
             HINTERNET hNet = InternetOpenA("MuOnline", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
             if (hNet) {
