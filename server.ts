@@ -574,7 +574,7 @@ async function startServer() {
           return res.json({
             success: true,
             action: "CONTINUE",
-            message: `${authIdentifier}, tu equipo ha sido registrado en Onyx Guard. Disfruta del juego.`,
+            message: `Bienvenido, ${authIdentifier}, tu equipo ha sido registrado en nuestro sistema. Disfrute del juego.`,
             sessionToken: Math.random().toString(36).substring(2, 15),
             speedhackSensitivity: conf[0].speedhackSensitivity || "1.80"
           });
@@ -583,7 +583,7 @@ async function startServer() {
       res.json({
         success: true,
         action: "CONTINUE",
-        message: authIdentifier ? `Bienvenido nuevamente ${authIdentifier}, disfruta del juego.` : "Authentication successful.",
+        message: authIdentifier ? `Bienvenido nuevamente ${authIdentifier}, disfrute del juego.` : "Authentication successful.",
         sessionToken: Math.random().toString(36).substring(2, 15),
         speedhackSensitivity: conf[0].speedhackSensitivity || "1.80"
       });
